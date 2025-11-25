@@ -264,6 +264,26 @@ public class XiangQiApp extends GameApplication {
         turnSelectionPanel.setTranslateX(safeLeftX);
         turnSelectionPanel.setTranslateY(APP_HEIGHT - 200);
 
+        // --- 【新增】橡皮擦按钮 ---
+        Button btnEraser = new Button("清除");
+        btnEraser.setFont(gameFont);
+        // 使用醒目的橙色或灰色
+        btnEraser.setStyle("-fx-background-color: #FF9800; -fx-text-fill: white; -fx-padding: 10 20; -fx-background-radius: 5;");
+        btnEraser.setPrefWidth(UI_WIDTH); // 占满宽度
+        btnEraser.setOnAction(e -> {
+            // 清除左右两侧棋子选择的样式
+            leftSetupPanel.getChildren().stream().filter(n -> n instanceof Button).forEach(n -> n.setStyle("-fx-background-color: transparent; -fx-border-color: transparent;"));
+            rightSetupPanel.getChildren().stream().filter(n -> n instanceof Button).forEach(n -> n.setStyle("-fx-background-color: transparent; -fx-border-color: transparent;"));
+
+            // 设置选中状态为橡皮擦
+            this.selectedPieceType = "Eraser";
+            this.selectedPieceIsRed = false; // 颜色不重要
+
+            // 给自己加个高亮边框表示选中
+            btnEraser.setStyle("-fx-background-color: #FF9800; -fx-text-fill: white; -fx-padding: 10 20; -fx-background-radius: 5; -fx-border-color: yellow; -fx-border-width: 3;");
+            FXGL.play("按钮音效1.mp3");
+        });
+
         // 开始按钮
         Button btnStartCustom = new Button("开始对局");
         btnStartCustom.setFont(gameFont);
@@ -283,7 +303,7 @@ public class XiangQiApp extends GameApplication {
         hintLabel.setWrapText(true);
         hintLabel.setPrefWidth(UI_WIDTH);
 
-        VBox controlBox = new VBox(20, hintLabel, btnStartCustom);
+        VBox controlBox = new VBox(20, hintLabel, btnEraser, btnStartCustom);
         controlBox.setAlignment(Pos.CENTER);
         controlBox.setStyle("-fx-padding: 30 0 0 0;");
         rightSetupPanel.getChildren().add(controlBox);

@@ -1,13 +1,14 @@
 package edu.sustech.xiangqi.controller;
 
 import com.almasb.fxgl.animation.Interpolators;
+import com.almasb.fxgl.dsl.FXGL;
 import com.almasb.fxgl.entity.Entity;
 import com.almasb.fxgl.entity.SpawnData;
 import edu.sustech.xiangqi.EntityType;
 import edu.sustech.xiangqi.XiangQiApp;
 import edu.sustech.xiangqi.view.PieceComponent;
 import edu.sustech.xiangqi.view.VisualStateComponent;
-import edu.sustech.xiangqi.model.*; // Import all piece classes
+import edu.sustech.xiangqi.model.*;
 import javafx.geometry.Point2D;
 import javafx.geometry.Rectangle2D;
 import javafx.scene.shape.Rectangle;
@@ -16,8 +17,8 @@ import javafx.util.Duration;
 
 import java.awt.Point;
 import java.util.List;
-import static com.almasb.fxgl.dsl.FXGL.*;
 
+import static com.almasb.fxgl.dsl.FXGL.*;
 import static edu.sustech.xiangqi.XiangQiApp.CELL_SIZE;
 
 public class boardController {
@@ -32,13 +33,11 @@ public class boardController {
     public void onGridClicked(int row, int col) {
         XiangQiApp app = getAppCast();
 
-        // --- 【新增】排局模式处理逻辑 ---
         if (app.isSettingUp()) {
             handleSetupClick(row, col, app);
-            return; // 排局模式下不执行后续的正常走棋逻辑
+            return;
         }
 
-        // --- 以下为正常游戏逻辑 (保持不变) ---
         if (model.isGameOver()) {
             return;
         }
@@ -59,41 +58,84 @@ public class boardController {
     }
 
     /**
-     * 【新增】处理排局模式下的点击：放置或移除棋子
+     * 【核心修改】处理排局模式下的点击
      */
     private void handleSetupClick(int row, int col, XiangQiApp app) {
-        // 1. 检查该位置是否已有棋子
         AbstractPiece existingPiece = model.getPieceAt(row, col);
+        String selectedType = app.getSelectedPieceType();
 
-        // 2. 如果有点了 UI 面板选中了要放置的棋子类型
-        if (app.getSelectedPieceType() != null) {
-            // 创建新棋子逻辑对象
-            AbstractPiece newPiece = createPiece(app.getSelectedPieceType(), row, col, app.isSelectedPieceRed());
+        // --- 逻辑 1：橡皮擦模式 ---
+        // 如果当前选中的是“橡皮擦”（在App里设置）
+        if ("Eraser".equals(selectedType)) {
+            if (existingPiece != null) {
+                model.getPieces().remove(existingPiece);
+                app.spawnPiecesFromModel();
+                FXGL.play("按钮音效1.mp3"); // 播放移除音效
+            }
+            return;
+        }
 
-            // 如果是将帅，检查是否已经存在（限制只能有一个）
-            if (newPiece instanceof GeneralPiece) {
-                if (model.FindKing(newPiece.isRed()) != null) {
-                    // 如果原本那个位置就是将，允许覆盖（移动），否则提示
-                    // 为了简化，这里采取：先删除已有的将（如果存在），再放置新的
-                    AbstractPiece oldKing = model.FindKing(newPiece.isRed());
-                    if (oldKing != null && (oldKing.getRow() != row || oldKing.getCol() != col)) {
-                        // 提示用户：将帅只能有一个，已移除旧的
-                        // 实际逻辑：在 model.addPiece 中并没有自动移除旧的同类，所以这里不管
-                        // 但如果用户想放两个将，我们需要禁止，或者移除旧的。
-                        // 简单策略：移除旧的 King
-                        model.getPieces().remove(oldKing);
-                    }
+        // --- 逻辑 2：放置模式 ---
+        if (selectedType != null) {
+            boolean isRed = app.isSelectedPieceRed();
+
+            // 【新增需求】点击相同类型的棋子 -> 执行删除（橡皮擦逻辑）
+            if (existingPiece != null) {
+                // 检查颜色和类型是否完全一致
+                if (existingPiece.isRed() == isRed &&
+                        existingPiece.getClass().getSimpleName().startsWith(selectedType)) {
+
+                    model.getPieces().remove(existingPiece);
+                    app.spawnPiecesFromModel();
+                    return; // 删完就走，不放新的
                 }
             }
 
-            // 更新模型
-            model.addPiece(newPiece);
+            // 创建新棋子准备放置
+            AbstractPiece newPiece = createPiece(selectedType, row, col, isRed);
 
-            // 刷新视图：重新生成所有棋子（简单粗暴但有效）
+            // --- 位置合法性校验 ---
+
+            // A. 将/帅 校验 (九宫格)
+            if (newPiece instanceof GeneralPiece) {
+                // 1. 范围校验
+                if (!isValidPalace(newPiece)) {
+                    getDialogService().showMessageBox(newPiece.getName() + " 只能放在九宫格内！");
+                    return;
+                }
+                // 2. 唯一性校验（移除旧的）
+                AbstractPiece oldKing = model.FindKing(newPiece.isRed());
+                if (oldKing != null && (oldKing.getRow() != row || oldKing.getCol() != col)) {
+                    model.getPieces().remove(oldKing);
+                }
+            }
+
+            // B. 士/仕 校验 (九宫格内的5个点)
+            if (newPiece instanceof AdvisorPiece) {
+                if (!isValidAdvisorPosition(newPiece)) {
+                    getDialogService().showMessageBox(newPiece.getName() + " 位置不合法！\n必须在九宫格的斜线或中心点上。");
+                    return;
+                }
+            }
+
+            // C. 象/相 校验 (本方阵地7个点)
+            if (newPiece instanceof ElephantPiece) {
+                if (!isValidElephantPosition(newPiece)) {
+                    getDialogService().showMessageBox(newPiece.getName() + " 位置不合法！\n只能放在本方阵地的合法人字位，且不能过河。");
+                    return;
+                }
+            }
+
+            // D. 兵/卒 (可选)
+            // 兵卒在其实际规则中初始位置只能在特定点，但排局通常允许任意位置（除了底线），暂不严格限制
+
+            // --- 执行放置 ---
+            model.addPiece(newPiece);
             app.spawnPiecesFromModel();
+            FXGL.play("按钮音效1.mp3");
 
         } else {
-            // 3. 如果没选中任何工具，且点击了已有棋子 -> 移除它 (橡皮擦功能)
+            // --- 逻辑 3：未选中任何工具，点击已有棋子 -> 删除 ---
             if (existingPiece != null) {
                 model.getPieces().remove(existingPiece);
                 app.spawnPiecesFromModel();
@@ -101,11 +143,81 @@ public class boardController {
         }
     }
 
+    // --- 校验辅助方法 ---
+
     /**
-     * 【新增】根据类型字符串创建棋子对象
+     * 判断是否在九宫格范围内 (用于将/帅基础校验)
      */
+    private boolean isValidPalace(AbstractPiece p) {
+        int r = p.getRow();
+        int c = p.getCol();
+        if (c < 3 || c > 5) return false; // 列必须在 3-5
+        if (p.isRed()) {
+            return r >= 7 && r <= 9; // 红方 7-9
+        } else {
+            return r >= 0 && r <= 2; // 黑方 0-2
+        }
+    }
+
+    /**
+     * 判断是否为合法的士/仕位置 (九宫格内的5个点)
+     */
+    private boolean isValidAdvisorPosition(AbstractPiece p) {
+        // 先检查是否在九宫格大范围内
+        if (!isValidPalace(p)) return false;
+
+        int r = p.getRow();
+        int c = p.getCol();
+
+        // 合法点位特征：
+        // 黑方: (0,3), (0,5), (1,4), (2,3), (2,5)
+        // 红方: (9,3), (9,5), (8,4), (7,3), (7,5)
+        // 规律：row + col 的奇偶性，或者枚举
+
+        // 中心点总是合法的
+        if (p.isRed()) {
+            if (r == 8 && c == 4) return true;
+        } else {
+            if (r == 1 && c == 4) return true;
+        }
+
+        // 四角点 (列必须是3或5)
+        return c == 3 || c == 5;
+    }
+
+    /**
+     * 判断是否为合法的象/相位置 (7个固定点)
+     */
+    private boolean isValidElephantPosition(AbstractPiece p) {
+        int r = p.getRow();
+        int c = p.getCol();
+
+        // 1. 绝对不能过河
+        if (p.isRed() && r < 5) return false;
+        if (!p.isRed() && r > 4) return false;
+
+        // 2. 只能在固定的 7 个点
+        // 黑方(Row 0-4): (0,2), (0,6), (2,0), (2,4), (2,8), (4,2), (4,6)
+        // 红方(Row 5-9): (5,2), (5,6), (7,0), (7,4), (7,8), (9,2), (9,6)
+
+        // 简便算法：列必须是偶数，且满足特定组合
+        if (c % 2 != 0) return false; // 必须偶数列
+
+        if (p.isRed()) {
+            // 红方行: 5, 7, 9
+            if (r == 5 || r == 9) return c == 2 || c == 6;
+            if (r == 7) return c == 0 || c == 4 || c == 8;
+        } else {
+            // 黑方行: 0, 2, 4
+            if (r == 0 || r == 4) return c == 2 || c == 6;
+            if (r == 2) return c == 0 || c == 4 || c == 8;
+        }
+        return false;
+    }
+
+
     private AbstractPiece createPiece(String type, int row, int col, boolean isRed) {
-        String name = ""; // 简单起见，这里简化名字，实际可以用 switch 细化
+        String name = "";
         switch (type) {
             case "General":  name = isRed ? "帅" : "将"; return new GeneralPiece(name, row, col, isRed);
             case "Advisor":  name = isRed ? "仕" : "士"; return new AdvisorPiece(name, row, col, isRed);
@@ -119,6 +231,7 @@ public class boardController {
     }
 
     // --- 以下保持原有逻辑不变 ---
+    // (请确保你原有的 findEntityAt, handleSelection, deselectPiece, handleMove 等方法都在这里)
 
     private void handleSelection(Entity pieceEntity) {
         AbstractPiece logicPiece = pieceEntity.getComponent(PieceComponent.class).getPieceLogic();
@@ -142,9 +255,7 @@ public class boardController {
         Entity entityToMove = this.selectedEntity;
         Point2D startPosition = entityToMove.getPosition();
         Entity capturedEntity = findEntityAt(targetRow, targetCol);
-
         boolean moveSuccess = model.movePiece(pieceToMove, targetRow, targetCol);
-
         if (moveSuccess) {
             playMoveAndEndGameAnimation(entityToMove, capturedEntity, startPosition, targetRow, targetCol);
         }
@@ -152,18 +263,15 @@ public class boardController {
     }
 
     private void playMoveAndEndGameAnimation(Entity entityToMove, Entity capturedEntity, Point2D startPos, int targetRow, int targetCol) {
-        // ... (保持不变) ...
         Point2D targetPosition = XiangQiApp.getVisualPosition(targetRow, targetCol);
         entityToMove.setPosition(targetPosition);
         boolean willBeGameOver = model.isGameOver();
-
         animationBuilder()
                 .duration(Duration.seconds(0.2))
                 .translate(entityToMove)
                 .from(startPos)
                 .to(targetPosition)
                 .buildAndPlay();
-
         runOnce(() -> {
             if (willBeGameOver) {
                 if (capturedEntity != null) capturedEntity.removeFromWorld();
@@ -222,10 +330,8 @@ public class boardController {
     public void undo() {
         boolean undoSuccess = model.undoMove();
         if (undoSuccess) {
-            // 调用 App 的刷新方法
             XiangQiApp app = getAppCast();
             app.spawnPiecesFromModel();
-
             updateTurnIndicator();
             deselectPiece();
         }
