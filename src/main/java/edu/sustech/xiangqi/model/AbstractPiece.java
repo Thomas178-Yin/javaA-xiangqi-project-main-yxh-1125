@@ -18,6 +18,9 @@ public abstract class AbstractPiece implements Serializable{
         this.isRed = isRed;
     }
 
+    public abstract AbstractPiece copy();
+
+
     public String getName() {
         return name;
     }

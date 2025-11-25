@@ -7,12 +7,16 @@ import static edu.sustech.xiangqi.XiangQiApp.*; // 导入静态常量
 public class InputHandler {
 
     private final boardController boardController;
+    private boolean isLocked = false;
+    public void setLocked(boolean locked) { this.isLocked = locked; }
+    public boolean isLocked() { return isLocked; }
 
     public InputHandler(boardController boardController) {
         this.boardController = boardController;
     }
 
     public void handleMouseClick(Point2D screenPosition) {
+        if (isLocked) return;
         double clickX = screenPosition.getX();
         double clickY = screenPosition.getY();
 

@@ -63,4 +63,9 @@ public class ElephantPiece extends AbstractPiece {
     public ElephantPiece(String name, int row, int col, boolean isRed) {
         super(name, row, col, isRed);
     }
+
+    @Override
+    public AbstractPiece copy() {
+        return new  ElephantPiece(this.getName(), this.getRow(), this.getCol(), this.isRed());
+    }
 }

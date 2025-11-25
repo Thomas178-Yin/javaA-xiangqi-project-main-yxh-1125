@@ -21,6 +21,8 @@ public class ChessBoardModel implements Serializable{
     private String winner;
     private final Stack<MoveCommand> moveHistory = new Stack<>();
     private transient ObservableList<String> moveHistoryStrings = FXCollections.observableArrayList();
+    public boolean aiMode = false;
+
 
 
     //让视图检查是否结束
@@ -148,8 +150,8 @@ public class ChessBoardModel implements Serializable{
 
         if (getPieceAt(newRow, newCol) != null) {
              if(getPieceAt(newRow, newCol) instanceof GeneralPiece){
-                 this.isGameOver = true;
-                 this.winner = isRedTurn ? "红方" : "黑方";
+                     this.isGameOver = true;
+                     this.winner = isRedTurn ? "红方" : "黑方";
                  pieces.remove(getPieceAt(newRow, newCol));
                  piece.moveTo(newRow, newCol);
                  return true;
@@ -170,7 +172,6 @@ public class ChessBoardModel implements Serializable{
         }
         else if (isGeneraInCheck(isRedTurn)) {
             // 顺便处理“将军”的提示
-            System.out.println("将军!");
         }
 
 
@@ -183,10 +184,11 @@ public class ChessBoardModel implements Serializable{
         }
         else if (isGeneraInCheck(isRedTurn)) {
             // 顺便处理“将军”的提示
-            System.out.println("将军!");
         }
         moveHistory.push(command);
-        updateHistoryStrings();
+
+            updateHistoryStrings();
+
 
         return true;
     }
@@ -197,7 +199,6 @@ public class ChessBoardModel implements Serializable{
      */
     public boolean undoMove() {
         if (moveHistory.isEmpty()) {
-            System.out.println("No moves to undo!");
             return false;
         }
 
@@ -225,7 +226,6 @@ public class ChessBoardModel implements Serializable{
             winner = null;
         }
 
-        System.out.println("Undo successful!");
         updateHistoryStrings();
 
         return true;
@@ -408,5 +408,52 @@ public class ChessBoardModel implements Serializable{
 
     public static int getCols() {
         return COLS;
+    }
+
+    /**
+     * 获取指定阵营目前所有的合法走法
+     * @param isRed true获取红方走法，false获取黑方
+     * @return 封装好的 MoveCommand 列表
+     */
+    public List<MoveCommand> getAllLegalMoves(boolean isRed) {
+        List<MoveCommand> moves = new ArrayList<>();
+
+        for (AbstractPiece piece : pieces) {
+            // 只处理指定阵营的棋子
+            if (piece.isRed() == isRed) {
+                // 获取该棋子所有落点
+                List<Point> legalPoints = piece.getLegalMoves(this);
+
+                for (Point p : legalPoints) {
+                    int targetRow = p.y;
+                    int targetCol = p.x;
+                    AbstractPiece targetPiece = getPieceAt(targetRow, targetCol);
+                    moves.add(new MoveCommand(piece, targetRow, targetCol, targetPiece));
+                }
+            }
+        }
+        return moves;
+    }
+
+    public ChessBoardModel deepClone() {
+        ChessBoardModel newModel = new ChessBoardModel();
+
+        // 1. 清空新棋盘默认初始化的棋子（因为构造函数里可能自带了初始化）
+        newModel.pieces.clear();
+        newModel.moveHistory.clear(); // 历史记录不用克隆，AI 不需要知道以前发生了什么
+
+        // 2. 复制基本状态
+        newModel.isRedTurn = this.isRedTurn;
+        newModel.isGameOver = this.isGameOver;
+        newModel.winner = this.winner;
+        newModel.aiMode = true; // 克隆出来的棋盘，默认就是 AI 模式（静音模式）
+
+        // 3. 【核心】深拷贝每一个棋子
+        for (AbstractPiece piece : this.pieces) {
+            AbstractPiece clonedPiece = piece.copy();
+            newModel.pieces.add(clonedPiece);
+        }
+
+        return newModel;
     }
 }

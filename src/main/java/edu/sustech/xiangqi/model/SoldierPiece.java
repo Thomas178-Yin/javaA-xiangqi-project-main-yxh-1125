@@ -13,6 +13,11 @@ public class SoldierPiece extends AbstractPiece {
     }
 
     @Override
+    public AbstractPiece copy() {
+        return new SoldierPiece(this.getName(), this.getRow(), this.getCol(), this.isRed());
+    }
+
+    @Override
     public boolean canMoveTo(int targetRow, int targetCol, ChessBoardModel model) {
         List<Point> legalMoves = getLegalMoves(model);
         Point targetPoint = new Point(targetCol, targetRow);
