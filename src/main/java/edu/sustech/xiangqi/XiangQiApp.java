@@ -28,6 +28,9 @@ import javafx.scene.shape.Rectangle;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 import javafx.scene.text.Text;
+import java.io.*;
+import java.util.ArrayList;
+import java.util.List;
 
 import static com.almasb.fxgl.dsl.FXGL.*;
 
@@ -36,18 +39,19 @@ public class XiangQiApp extends GameApplication {
     // --- 常量定义 ---
     public static final int CELL_SIZE = 90;
     public static final int MARGIN = 31;
-    public static final int HORIZONTAL_PADDING_MIN = 70;
-    public static final int UI_GAP = 50;
-    public static final int UI_WIDTH = 160;
+    public static final int UI_GAP = 60;
+    public static final int UI_WIDTH = 180;
 
     public static final int BOARD_WIDTH = 796;
     public static final int BOARD_HEIGHT = 887;
 
-    public static final int APP_WIDTH = UI_WIDTH + UI_GAP + BOARD_WIDTH + UI_GAP + UI_WIDTH;
-    public static final int APP_HEIGHT = BOARD_HEIGHT + 50;
+    public static final int APP_WIDTH = UI_WIDTH + UI_GAP + BOARD_WIDTH + UI_GAP + UI_WIDTH + 40;
+    // 增加高度以实现垂直居中
+    public static final int APP_HEIGHT = BOARD_HEIGHT + 120;
 
-    // 棋盘在画面中居中的起始 X 坐标
+    // 棋盘居中坐标
     public static final double BOARD_START_X = (APP_WIDTH - BOARD_WIDTH) / 2.0;
+    public static final double BOARD_START_Y = (APP_HEIGHT - BOARD_HEIGHT) / 2.0;
 
     // 文本提示
     private Text gameOverBanner;
@@ -58,6 +62,10 @@ public class XiangQiApp extends GameApplication {
     // --- 状态变量 ---
     private boolean isCustomMode = false;
     private boolean isSettingUp = false;
+
+    // 【关键】标记：当前是否是通过“读取存档”进入的游戏
+    private boolean isLoadedGame = false;
+
     private String selectedPieceType = null;
     private boolean selectedPieceIsRed = true;
 
@@ -65,7 +73,6 @@ public class XiangQiApp extends GameApplication {
     private VBox leftSetupPanel;
     private VBox rightSetupPanel;
     private VBox standardGameUI;
-    // 【新增】左下角先手选择面板引用
     private VBox turnSelectionPanel;
 
     private ChessBoardModel model;
@@ -75,7 +82,12 @@ public class XiangQiApp extends GameApplication {
     // --- Getters & Setters ---
     public Text getGameOverBanner() { return gameOverBanner; }
     public Rectangle getGameOverDimmingRect() { return gameOverDimmingRect; }
+
     public void setCustomMode(boolean customMode) { this.isCustomMode = customMode; }
+
+    // 【关键】这就是报错缺少的那个方法
+    public void setLoadedGame(boolean loadedGame) { this.isLoadedGame = loadedGame; }
+
     public boolean isSettingUp() { return isSettingUp; }
     public String getSelectedPieceType() { return selectedPieceType; }
     public boolean isSelectedPieceRed() { return selectedPieceIsRed; }
@@ -93,7 +105,7 @@ public class XiangQiApp extends GameApplication {
 
     public static Point2D getVisualPosition(int row, int col) {
         double centerX = BOARD_START_X + MARGIN + col * CELL_SIZE;
-        double centerY = MARGIN + row * CELL_SIZE;
+        double centerY = BOARD_START_Y + MARGIN + row * CELL_SIZE;
         double pieceRadius = (CELL_SIZE - 8) / 2.0;
         double topLeftX = centerX - pieceRadius;
         double topLeftY = centerY - pieceRadius;
@@ -125,23 +137,41 @@ public class XiangQiApp extends GameApplication {
         }
     }
 
+    // --- 核心初始化逻辑 ---
     @Override
     protected void initGame() {
         getGameWorld().addEntityFactory(new XiangQiFactory());
-        this.model = new ChessBoardModel();
+
+        if (isLoadedGame) {
+            // 1. 如果是读档：使用已加载的 Model
+            isLoadedGame = false; // 重置标记
+            if (this.model == null) {
+                this.model = new ChessBoardModel(); // 防御性编程
+            }
+            isSettingUp = false;
+        } else {
+            // 2. 如果是新游戏（标准或排局）：强制 NEW 一个新的 Model
+            this.model = new ChessBoardModel();
+
+            if (isCustomMode) {
+                // 排局：清空
+                this.model.clearBoard();
+                isSettingUp = true;
+                selectedPieceType = null;
+            } else {
+                // 标准：使用默认棋盘
+                isSettingUp = false;
+            }
+        }
 
         spawn("background", 0, 0);
-        spawn("board", BOARD_START_X, 0);
+        spawn("board", BOARD_START_X, BOARD_START_Y);
 
         this.boardController = new boardController(this.model);
         this.inputHandler = new InputHandler(this.boardController);
 
-        if (isCustomMode) {
-            model.clearBoard();
-            isSettingUp = true;
-            selectedPieceType = null;
-        } else {
-            isSettingUp = false;
+        // 如果不是在排局设置阶段（即标准开局或读档完毕），生成棋子实体
+        if (!isSettingUp) {
             spawnPiecesFromModel();
         }
     }
@@ -157,6 +187,7 @@ public class XiangQiApp extends GameApplication {
         }
     }
 
+    // --- UI 初始化 ---
     @Override
     protected void initUI() {
         gameOverDimmingRect = new Rectangle(APP_WIDTH, APP_HEIGHT, Color.web("000", 0.0));
@@ -189,11 +220,11 @@ public class XiangQiApp extends GameApplication {
 
         var btnUndo = new PixelatedButton("悔棋", "Button1", () -> { if (boardController != null) boardController.undo(); });
         var btnSurrender = new PixelatedButton("投降", "Button1", () -> { if (boardController != null) boardController.surrender(); });
-        var btnAIHint = new PixelatedButton("AI提示", "Button1", () -> System.out.println("AI提示..."));
+        var btnSave = new PixelatedButton("保存游戏", "Button1", this::openSaveDialog);
         var btnHistory = new PixelatedButton("历史记录", "Button1", () -> getGameController().gotoGameMenu());
 
-        standardGameUI = new VBox(10, btnUndo, btnSurrender, btnAIHint, btnHistory);
-        standardGameUI.setPrefWidth(UI_WIDTH);
+        standardGameUI = new VBox(10, btnUndo, btnSave, btnSurrender, btnHistory);
+        // standardGameUI.setPrefWidth(UI_WIDTH); // 让 StackPane 按钮决定宽度
 
         addUINode(standardGameUI, uiX, 50);
 
@@ -202,23 +233,21 @@ public class XiangQiApp extends GameApplication {
         addUINode(turnIndicator, uiX, 750);
     }
 
+    // --- 排局 UI 构建 ---
     private void initSetupUI() {
-        // --- 1. 左侧棋子库 ---
         double leftPanelX = BOARD_START_X - UI_GAP - UI_WIDTH;
-        // 保证不贴边，至少留 20px
         double safeLeftX = Math.max(20, leftPanelX);
 
         leftSetupPanel = createPiecePalette(true);
         leftSetupPanel.setTranslateX(safeLeftX);
         leftSetupPanel.setTranslateY(50);
 
-        // --- 2. 右侧棋子库 + 开始按钮 ---
         double rightPanelX = BOARD_START_X + BOARD_WIDTH + UI_GAP;
         rightSetupPanel = createPiecePalette(false);
         rightSetupPanel.setTranslateX(rightPanelX);
         rightSetupPanel.setTranslateY(50);
 
-        // --- 3. 【修改】左下角：先手选择按钮 ---
+        // 先手选择
         ToggleGroup turnGroup = new ToggleGroup();
         ToggleButton rbRedFirst = createStyledToggleButton("红先", true);
         ToggleButton rbBlackFirst = createStyledToggleButton("黑先", false);
@@ -226,19 +255,16 @@ public class XiangQiApp extends GameApplication {
         rbBlackFirst.setToggleGroup(turnGroup);
         rbRedFirst.setSelected(true);
 
-        // 创建一个单独的面板放置它们
         Label turnLabel = new Label("先手选择");
         turnLabel.setFont(gameFont);
         turnLabel.setTextFill(Color.WHITE);
 
         turnSelectionPanel = new VBox(10, turnLabel, rbRedFirst, rbBlackFirst);
         turnSelectionPanel.setAlignment(Pos.CENTER_LEFT);
-
-        // 设置位置：横坐标与左侧棋子库对齐，纵坐标在屏幕底部偏上一点
         turnSelectionPanel.setTranslateX(safeLeftX);
-        turnSelectionPanel.setTranslateY(APP_HEIGHT - 200); // 距离底部 200px，根据需要调整
+        turnSelectionPanel.setTranslateY(APP_HEIGHT - 200);
 
-        // --- 4. 右侧：开始按钮和提示 ---
+        // 开始按钮
         Button btnStartCustom = new Button("开始对局");
         btnStartCustom.setFont(gameFont);
         btnStartCustom.setStyle("-fx-background-color: #4CAF50; -fx-text-fill: white; -fx-padding: 10 20; -fx-background-radius: 5;");
@@ -248,7 +274,11 @@ public class XiangQiApp extends GameApplication {
         });
 
         Label hintLabel = new Label("操作提示:\n1.点击两侧棋子选中\n2.点击棋盘放置\n3.点击已放棋子移除");
-        hintLabel.setFont(getAssetLoader().loadFont("HYPixel11pxU-2.ttf").newFont(16));
+        try {
+            hintLabel.setFont(getAssetLoader().loadFont("HYPixel11pxU-2.ttf").newFont(16));
+        } catch (Exception e) {
+            hintLabel.setFont(Font.font(16));
+        }
         hintLabel.setStyle("-fx-text-fill: white; -fx-padding: 10; -fx-background-color: rgba(0,0,0,0.5); -fx-background-radius: 5;");
         hintLabel.setWrapText(true);
         hintLabel.setPrefWidth(UI_WIDTH);
@@ -260,7 +290,6 @@ public class XiangQiApp extends GameApplication {
 
         addUINode(leftSetupPanel);
         addUINode(rightSetupPanel);
-        // 添加新的左下角面板
         addUINode(turnSelectionPanel);
     }
 
@@ -317,9 +346,13 @@ public class XiangQiApp extends GameApplication {
                 btn.setGraphic(pieceImage);
                 btn.setStyle("-fx-background-color: transparent; -fx-border-color: transparent; -fx-border-width: 2; -fx-border-radius: 5;");
                 btn.setOnAction(e -> {
+                    // 重置左右面板所有按钮样式
                     leftSetupPanel.getChildren().stream().filter(n -> n instanceof Button).forEach(n -> n.setStyle("-fx-background-color: transparent; -fx-border-color: transparent;"));
                     rightSetupPanel.getChildren().stream().filter(n -> n instanceof Button).forEach(n -> n.setStyle("-fx-background-color: transparent; -fx-border-color: transparent;"));
+
+                    // 高亮当前按钮
                     btn.setStyle("-fx-background-color: rgba(255,255,0,0.3); -fx-border-color: yellow; -fx-border-width: 2; -fx-border-radius: 5;");
+
                     this.selectedPieceType = type;
                     this.selectedPieceIsRed = isRed;
                     FXGL.play("按钮音效1.mp3");
@@ -339,7 +372,6 @@ public class XiangQiApp extends GameApplication {
         }
         removeUINode(leftSetupPanel);
         removeUINode(rightSetupPanel);
-        // 【新增】同时移除左下角的先手选择面板
         removeUINode(turnSelectionPanel);
 
         model.setRedTurn(isRedFirst);
@@ -350,6 +382,84 @@ public class XiangQiApp extends GameApplication {
 
         turnIndicator.update(isRedFirst, false);
         getDialogService().showMessageBox("排局开始！\n由 " + (isRedFirst ? "红方" : "黑方") + " 先行。");
+    }
+
+    // --- 存档功能 ---
+
+    private void saveGameToSlot(int slotIndex) {
+        String filename = "savegame_" + slotIndex + ".dat";
+        try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(filename))) {
+            oos.writeObject(model);
+            getDialogService().showMessageBox("成功保存到：存档 " + slotIndex);
+        } catch (IOException e) {
+            e.printStackTrace();
+            getDialogService().showMessageBox("存档失败：" + e.getMessage());
+        }
+    }
+
+    public void openSaveDialog() {
+        getDialogService().showChoiceBox("请选择保存位置",
+                java.util.Arrays.asList("存档 1", "存档 2", "存档 3"),
+                selected -> {
+                    int slot = Integer.parseInt(selected.replace("存档 ", ""));
+                    saveGameToSlot(slot);
+                }
+        );
+    }
+
+    // --- 读档功能 ---
+
+    private void loadGameFromSlot(int slotIndex) {
+        String filename = "savegame_" + slotIndex + ".dat";
+        File file = new File(filename);
+
+        if (!file.exists()) {
+            getDialogService().showMessageBox("错误：存档 " + slotIndex + " 不存在！");
+            return;
+        }
+
+        try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(file))) {
+            ChessBoardModel loadedModel = (ChessBoardModel) ois.readObject();
+            loadedModel.rebuildAfterLoad(); // 修复 transient 数据
+
+            this.model = loadedModel;
+            this.isCustomMode = false;
+
+            // 【关键】标记这是加载的游戏，告诉 initGame 不要覆盖
+            this.isLoadedGame = true;
+
+            getGameController().startNewGame();
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            getDialogService().showMessageBox("读取失败：" + e.getMessage());
+        }
+    }
+
+    public void openLoadDialog() {
+        List<String> availableSlots = new ArrayList<>();
+        for (int i = 1; i <= 3; i++) {
+            if (new File("savegame_" + i + ".dat").exists()) {
+                availableSlots.add("存档 " + i);
+            }
+        }
+
+        if (availableSlots.isEmpty()) {
+            getDialogService().showMessageBox("没有找到任何存档记录。");
+            return;
+        }
+
+        getDialogService().showChoiceBox("请选择读取位置", availableSlots, selected -> {
+            int slot = Integer.parseInt(selected.replace("存档 ", ""));
+            loadGameFromSlot(slot);
+        });
+    }
+
+    // 供主菜单检查是否有存档
+    public boolean hasSaveFile() {
+        return new File("savegame_1.dat").exists() ||
+                new File("savegame_2.dat").exists() ||
+                new File("savegame_3.dat").exists();
     }
 
     @Override

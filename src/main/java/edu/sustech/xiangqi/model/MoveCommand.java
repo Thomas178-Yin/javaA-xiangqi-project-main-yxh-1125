@@ -1,6 +1,9 @@
 package edu.sustech.xiangqi.model;
+import java.io.Serializable;
 
-public class MoveCommand {
+public class MoveCommand implements Serializable{
+    private static final long serialVersionUID = 1L;
+
     private final AbstractPiece movedPiece;
     private final int startRow;
     private final int startCol;

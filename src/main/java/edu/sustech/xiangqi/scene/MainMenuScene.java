@@ -45,7 +45,16 @@ public class MainMenuScene extends FXGLMenu {
         // --- 3. 按钮区域 (【修改】增加自定义局按钮，调整间距) ---
 
         // 普通开始游戏
-        var btnNewGame = new PixelatedButton("标准对战", "Button1", this::fireNewGame);
+        // 修改“标准对战”按钮的逻辑
+        var btnNewGame = new PixelatedButton("标准对战", "Button1", () -> {
+            XiangQiApp app = (XiangQiApp) FXGL.getApp();
+
+            // 【修改】确保两个标记都是 false
+            app.setCustomMode(false);
+            app.setLoadedGame(false); // 关键：告诉 initGame 我要新的
+
+            fireNewGame();
+        });
 
         // 【新增】自定义模式按钮
         var btnCustomGame = new PixelatedButton("排局模式", "Button1", () -> {
@@ -55,8 +64,11 @@ public class MainMenuScene extends FXGLMenu {
             fireNewGame(); // 触发游戏开始流程（会在 initGame 中进行分支处理）
         });
 
-        var btnLoadGame = new PixelatedButton("读取存档", "Button1", () -> System.out.println("读取存档功能待实现..."));
-
+        // 【修改】连接读取存档功能
+        var btnLoadGame = new PixelatedButton("读取存档", "Button1", () -> {
+            XiangQiApp app = (XiangQiApp) FXGL.getApp();
+            app.openLoadDialog();
+        });
         var btnOnline = new PixelatedButton("联网对战", "Button1", () -> {
             System.out.println("联网对战功能待实现...");
         });

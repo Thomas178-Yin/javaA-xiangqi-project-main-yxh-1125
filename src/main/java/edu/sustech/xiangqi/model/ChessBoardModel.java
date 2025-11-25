@@ -2,13 +2,14 @@ package edu.sustech.xiangqi.model;
 import java.awt.Point;
 
 import java.util.ArrayList;
+import java.io.Serializable;
 import java.util.List;
 import java.util.Stack; // 需要 import
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 
 
-public class ChessBoardModel {
+public class ChessBoardModel implements Serializable{
 
 
     // 储存棋盘上所有的棋子，要实现吃子的话，直接通过pieces.remove(被吃掉的棋子)删除就可以
@@ -19,7 +20,7 @@ public class ChessBoardModel {
     private boolean isGameOver = false;
     private String winner;
     private final Stack<MoveCommand> moveHistory = new Stack<>();
-    private final ObservableList<String> moveHistoryStrings = FXCollections.observableArrayList();
+    private transient ObservableList<String> moveHistoryStrings = FXCollections.observableArrayList();
 
 
     //让视图检查是否结束
@@ -355,6 +356,18 @@ public class ChessBoardModel {
         );
 
         return simpleNotation;
+    }
+
+    // --- 【新增】反序列化后的修复方法 ---
+    /**
+     * 当从文件读取存档后，因为 moveHistoryStrings 是 transient (空的)，
+     * 我们需要根据 moveHistory 栈重新生成它。
+     */
+    public void rebuildAfterLoad() {
+        // 1. 重新初始化列表（因为它是 null）
+        moveHistoryStrings = FXCollections.observableArrayList();
+        // 2. 重新填充数据
+        updateHistoryStrings();
     }
 
     private String formatCol(int col, boolean isRed) {
