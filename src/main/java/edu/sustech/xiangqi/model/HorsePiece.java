@@ -55,4 +55,9 @@ public class HorsePiece extends AbstractPiece {
         super(name, row, col, isRed);
     }
 
+    @Override
+    public AbstractPiece copy() {
+        return new HorsePiece(this.getName(), this.getRow(), this.getCol(), this.isRed());
+    }
+
 }

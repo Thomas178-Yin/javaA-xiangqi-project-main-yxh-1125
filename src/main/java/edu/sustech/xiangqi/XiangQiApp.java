@@ -93,6 +93,7 @@ public class XiangQiApp extends GameApplication {
     public boolean isSelectedPieceRed() { return selectedPieceIsRed; }
     public ChessBoardModel getModel() { return model; }
     public TurnIndicator getTurnIndicator() { return turnIndicator; }
+    public  InputHandler getInputHandler() { return inputHandler; }
 
     public void centerTextInApp(Text text) {
         double textWidth = text.getLayoutBounds().getWidth();

@@ -58,4 +58,9 @@ public class AdvisorPiece extends AbstractPiece{
         super(name, row, col, isRed);
     }
 
+    @Override
+    public AbstractPiece copy() {
+        return new AdvisorPiece(this.getName(), this.getRow(), this.getCol(), this.isRed());
+    }
+
 }

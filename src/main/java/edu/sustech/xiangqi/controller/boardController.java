@@ -1,5 +1,8 @@
 package edu.sustech.xiangqi.controller;
 
+import com.almasb.fxgl.dsl.FXGL;
+import javafx.concurrent.Task;
+import edu.sustech.xiangqi.ai.AIService;
 import com.almasb.fxgl.animation.Interpolators;
 import com.almasb.fxgl.dsl.FXGL;
 import com.almasb.fxgl.entity.Entity;
@@ -25,6 +28,8 @@ public class boardController {
 
     private ChessBoardModel model;
     private Entity selectedEntity = null;
+    private final AIService aiService = new AIService(); // AI 服务实例
+
 
     public boardController(ChessBoardModel model) {
         this.model = model;
@@ -219,14 +224,29 @@ public class boardController {
     private AbstractPiece createPiece(String type, int row, int col, boolean isRed) {
         String name = "";
         switch (type) {
-            case "General":  name = isRed ? "帅" : "将"; return new GeneralPiece(name, row, col, isRed);
-            case "Advisor":  name = isRed ? "仕" : "士"; return new AdvisorPiece(name, row, col, isRed);
-            case "Elephant": name = isRed ? "相" : "象"; return new ElephantPiece(name, row, col, isRed);
-            case "Horse":    name = "马"; return new HorsePiece(name, row, col, isRed);
-            case "Chariot":  name = "车"; return new ChariotPiece(name, row, col, isRed);
-            case "Cannon":   name = "炮"; return new CannonPiece(name, row, col, isRed);
-            case "Soldier":  name = isRed ? "兵" : "卒"; return new SoldierPiece(name, row, col, isRed);
-            default: return new SoldierPiece("兵", row, col, isRed);
+            case "General":
+                name = isRed ? "帅" : "将";
+                return new GeneralPiece(name, row, col, isRed);
+            case "Advisor":
+                name = isRed ? "仕" : "士";
+                return new AdvisorPiece(name, row, col, isRed);
+            case "Elephant":
+                name = isRed ? "相" : "象";
+                return new ElephantPiece(name, row, col, isRed);
+            case "Horse":
+                name = "马";
+                return new HorsePiece(name, row, col, isRed);
+            case "Chariot":
+                name = "车";
+                return new ChariotPiece(name, row, col, isRed);
+            case "Cannon":
+                name = "炮";
+                return new CannonPiece(name, row, col, isRed);
+            case "Soldier":
+                name = isRed ? "兵" : "卒";
+                return new SoldierPiece(name, row, col, isRed);
+            default:
+                return new SoldierPiece("兵", row, col, isRed);
         }
     }
 
@@ -258,6 +278,10 @@ public class boardController {
         boolean moveSuccess = model.movePiece(pieceToMove, targetRow, targetCol);
         if (moveSuccess) {
             playMoveAndEndGameAnimation(entityToMove, capturedEntity, startPosition, targetRow, targetCol);
+            if (!model.isRedTurn() && !model.isGameOver()) {
+                // 触发 AI
+                startAITurn();
+            }
         }
         deselectPiece();
     }
@@ -279,8 +303,10 @@ public class boardController {
             } else {
                 if (capturedEntity != null) capturedEntity.removeFromWorld();
                 updateTurnIndicator();
+
             }
         }, Duration.seconds(0.25));
+
     }
 
     private void showGameOverBanner() {
@@ -349,4 +375,106 @@ public class boardController {
             spawn("MoveIndicator", pos);
         }
     }
+
+    //AI相关
+
+    /**
+     * 【核心】启动 AI 思考线程
+     * 这个方法应该在人类回合结束（动画播完）后调用
+     */
+    private void startAITurn() {
+        System.out.println("AI (黑方) 正在思考...");
+
+        // 1. 上锁：禁止人类操作
+        ((XiangQiApp) FXGL.getApp()).getInputHandler().setLocked(true);
+
+        // 2. 创建后台任务 (Task 是 JavaFX 专门处理多线程的类)
+        Task<AIService.MoveResult> aiTask = new Task<>() {
+            @Override
+            protected AIService.MoveResult call() throws Exception {
+                // --- 这里是后台线程，不要操作 UI ---
+
+                // 模拟一点点思考延迟，让人感觉 AI 在“想” (可选)
+                // Thread.sleep(500);
+
+                // 启动搜索！深度建议 4 层
+                // 参数：model, depth=4, isRed=false (假设AI执黑)
+                return aiService.search(model, 4, false);
+            }
+        };
+
+        // 3. 任务成功回调 (回到 UI 主线程)
+        aiTask.setOnSucceeded(event -> {
+            AIService.MoveResult result = aiTask.getValue();
+
+            if (result != null && result.move != null) {
+                MoveCommand aiMove = result.move;
+
+                // --- 坐标提取  ---
+                int startRow = aiMove.getStartRow(); // 确保 MoveCommand 存了起点
+                int startCol = aiMove.getStartCol();
+                int endRow = aiMove.getEndRow();
+                int endCol = aiMove.getEndCol();
+
+                System.out.println("AI 决定从 (" + startRow + "," + startCol + ") 走到 (" + endRow + "," + endCol + ")");
+
+                // 在真实棋盘上找到对应的棋子
+                AbstractPiece realPiece = model.getPieceAt(startRow, startCol);
+
+                if (realPiece != null) {
+                    // 执行真实移动
+                    executeMove(realPiece, endRow, endCol);
+                } else {
+                    System.err.println("灵异事件：AI 要移动的棋子在真实棋盘上不存在！");
+                }
+            }
+
+            ((XiangQiApp) FXGL.getApp()).getInputHandler().setLocked(false);
+        });
+
+
+
+
+        // 5. 任务失败回调 (防崩)
+        aiTask.setOnFailed(e -> {
+            aiTask.getException().printStackTrace();
+            ((XiangQiApp) FXGL.getApp()).getInputHandler().setLocked(false);
+        });
+
+        // 6. 启动线程
+        new Thread(aiTask).start();
+    }
+
+    /**
+     * 执行 AI 的移动指令
+     */
+    private void executeMove(AbstractPiece realPiece, int targetRow, int targetCol) {
+        // 1. 找 UI 实体
+        Entity pieceEntity = findEntityByLogic(realPiece);
+        // 找被吃掉的 UI 实体 (如果有)
+        AbstractPiece targetLogicPiece = model.getPieceAt(targetRow, targetCol);
+        Entity targetEntity = findEntityByLogic(targetLogicPiece);
+
+        Point2D startPos = pieceEntity.getPosition();
+
+        // 2. 真实模型移动
+        model.movePiece(realPiece, targetRow, targetCol);
+
+        // 3. 播放动画
+        playMoveAndEndGameAnimation(pieceEntity, targetEntity, startPos, targetRow, targetCol);
+    }
+
+    /**
+     * 辅助方法：通过逻辑棋子反查实体
+     */
+    private Entity findEntityByLogic(AbstractPiece logicPiece) {
+        if (logicPiece == null) return null;
+
+        return getGameWorld().getEntitiesByType(EntityType.PIECE).stream()
+                .filter(e -> e.getComponent(PieceComponent.class).getPieceLogic() == logicPiece)
+                .findFirst()
+                .orElse(null);
+    }
+
+
 }

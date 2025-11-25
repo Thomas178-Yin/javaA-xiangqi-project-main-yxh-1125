@@ -14,6 +14,11 @@ public class PlaceholderPiece extends AbstractPiece {
     }
 
     @Override
+    public AbstractPiece copy() {
+        return new PlaceholderPiece();
+    }
+
+    @Override
     public boolean canMoveTo(int targetRow, int targetCol, ChessBoardModel model) {
         return false; // 不能移动
     }
