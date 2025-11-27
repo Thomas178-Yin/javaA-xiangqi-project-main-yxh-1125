@@ -378,6 +378,10 @@ public class ChessBoardModel implements Serializable{
     }
 
     private void updateHistoryStrings() {
+        if (moveHistoryStrings == null) {
+            moveHistoryStrings = FXCollections.observableArrayList();
+        }
+
         moveHistoryStrings.clear(); // 先清空
 
         // 遍历栈中的每一步
@@ -398,6 +402,13 @@ public class ChessBoardModel implements Serializable{
 
 
     public ObservableList<String> getMoveHistoryAsObservableList() {
+        if (moveHistoryStrings == null) {
+            moveHistoryStrings = FXCollections.observableArrayList();
+            // 如果历史栈里有数据但 String 列表是空的，顺便同步一下
+            if (!moveHistory.isEmpty()) {
+                updateHistoryStrings();
+            }
+        }
         return moveHistoryStrings;
     }
 
