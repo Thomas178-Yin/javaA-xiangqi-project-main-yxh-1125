@@ -31,7 +31,9 @@ import javafx.scene.text.Text;
 import java.io.*;
 import java.util.ArrayList;
 import java.util.List;
-
+import edu.sustech.xiangqi.manager.UserManager;
+import javafx.scene.control.PasswordField;
+import javafx.scene.control.TextField;
 import static com.almasb.fxgl.dsl.FXGL.*;
 
 public class XiangQiApp extends GameApplication {
@@ -83,6 +85,12 @@ public class XiangQiApp extends GameApplication {
     private ChessBoardModel model;
     private boardController boardController;
     private InputHandler inputHandler;
+    // 【新增】用户管理器
+    private UserManager userManager;
+    private String currentUser = "Guest";
+    private boolean isGuestMode = true;
+    //储存地址
+    private static final String SAVE_DIR = "saves/";
 
     // --- Getters & Setters ---
     public Text getGameOverBanner() { return gameOverBanner; }
@@ -94,6 +102,9 @@ public class XiangQiApp extends GameApplication {
     public boolean isSelectedPieceRed() { return selectedPieceIsRed; }
     public ChessBoardModel getModel() { return model; }
     public TurnIndicator getTurnIndicator() { return turnIndicator; }
+    public UserManager getUserManager() { return userManager; }
+    public String getCurrentUser() { return currentUser; }
+    public boolean isGuest() { return isGuestMode; }
 
     public void centerTextInApp(Text text) {
         double textWidth = text.getLayoutBounds().getWidth();
@@ -102,6 +113,18 @@ public class XiangQiApp extends GameApplication {
         double centerY = (APP_HEIGHT - textHeight) / 2 + text.getFont().getSize() * 0.3;
         text.setTranslateX(centerX);
         text.setTranslateY(centerY);
+    }
+
+    // 【新增】登录方法，供 UI 调用
+    public void login(String username) {
+        this.currentUser = username;
+        this.isGuestMode = false;
+    }
+
+    // 【新增】游客登录方法
+    public void loginAsGuest() {
+        this.currentUser = "Guest";
+        this.isGuestMode = true;
     }
 
     public static Point2D getVisualPosition(int row, int col) {
@@ -136,7 +159,9 @@ public class XiangQiApp extends GameApplication {
     protected void onPreInit() {
         try {
             gameFont = getAssetLoader().loadFont("HYPixel11pxU-2.ttf").newFont(20);
-        } catch (Exception e) {
+            userManager = new UserManager();
+        }
+        catch (Exception e) {
             System.out.println("字体加载失败，使用默认字体");
             gameFont = Font.font("System", FontWeight.BOLD, 20);
         }
@@ -464,17 +489,29 @@ public class XiangQiApp extends GameApplication {
 
     // --- 存档功能 ---
     private void saveGameToSlot(int slotIndex) {
-        String filename = "savegame_" + slotIndex + ".dat";
+        File dir = new File(SAVE_DIR);
+        if (!dir.exists()) {
+            dir.mkdirs();
+        }
+
+        String filename = SAVE_DIR + currentUser + "_save_" + slotIndex + ".dat";
         try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(filename))) {
             oos.writeObject(model);
             getDialogService().showMessageBox("成功保存到：存档 " + slotIndex);
-        } catch (IOException e) {
+        }
+        catch (IOException e) {
             e.printStackTrace();
             getDialogService().showMessageBox("存档失败：" + e.getMessage());
         }
     }
 
     public void openSaveDialog() {
+        // 【新增】游客限制
+        if (isGuestMode) {
+            getDialogService().showMessageBox("游客模式无法保存存档。\n请注册/登录账号后使用。");
+            return;
+        }
+
         getDialogService().showChoiceBox("请选择保存位置",
                 java.util.Arrays.asList("存档 1", "存档 2", "存档 3"),
                 selected -> {
@@ -486,7 +523,7 @@ public class XiangQiApp extends GameApplication {
 
     // --- 读档功能 ---
     private void loadGameFromSlot(int slotIndex) {
-        String filename = "savegame_" + slotIndex + ".dat";
+        String filename = SAVE_DIR + currentUser + "_save_" + slotIndex + ".dat";
         File file = new File(filename);
         if (!file.exists()) {
             getDialogService().showMessageBox("错误：存档 " + slotIndex + " 不存在！");
@@ -506,16 +543,26 @@ public class XiangQiApp extends GameApplication {
     }
 
     public void openLoadDialog() {
+        // 【新增】游客限制
+        if (isGuestMode) {
+            getDialogService().showMessageBox("游客模式无法读取存档。");
+            return;
+        }
+
+        // 只检查当前用户的存档
         List<String> availableSlots = new ArrayList<>();
         for (int i = 1; i <= 3; i++) {
-            if (new File("savegame_" + i + ".dat").exists()) {
+            String path = SAVE_DIR + currentUser + "_save_" + i + ".dat";
+            if (new File(path).exists()) {
                 availableSlots.add("存档 " + i);
             }
         }
+
         if (availableSlots.isEmpty()) {
-            getDialogService().showMessageBox("没有找到任何存档记录。");
+            getDialogService().showMessageBox("没有找到 " + currentUser + " 的任何存档记录。");
             return;
         }
+
         getDialogService().showChoiceBox("请选择读取位置", availableSlots, selected -> {
             int slot = Integer.parseInt(selected.replace("存档 ", ""));
             loadGameFromSlot(slot);
@@ -523,9 +570,10 @@ public class XiangQiApp extends GameApplication {
     }
 
     public boolean hasSaveFile() {
-        return new File("savegame_1.dat").exists() ||
-                new File("savegame_2.dat").exists() ||
-                new File("savegame_3.dat").exists();
+        if (isGuestMode) return false;
+        return new File(SAVE_DIR + currentUser + "_save_1.dat").exists() ||
+                new File(SAVE_DIR + currentUser + "_save_2.dat").exists() ||
+                new File(SAVE_DIR + currentUser + "_save_3.dat").exists();
     }
 
     @Override
