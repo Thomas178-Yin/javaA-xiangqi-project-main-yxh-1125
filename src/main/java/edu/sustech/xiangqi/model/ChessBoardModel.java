@@ -142,6 +142,12 @@ public class ChessBoardModel implements Serializable{
         if (!piece.canMoveTo(newRow, newCol, this)) {
             return false;
         }
+        if (!tryMoveAndCheckSafe(piece, newRow, newCol)) {
+            // 你可以在这里打印一句调试信息，或者在 Controller 层弹窗提示
+            System.out.println("非法移动：不能送将！");
+            return false;
+        }
+
         AbstractPiece targetPiece = getPieceAt(newRow, newCol);
         MoveCommand command = new MoveCommand(piece, newRow, newCol, targetPiece);
 
@@ -160,6 +166,7 @@ public class ChessBoardModel implements Serializable{
         if (isGameOver) {
             return false;
         }
+        //换边
         isRedTurn = !isRedTurn;
 
         // 先检查有没有把自己害死
@@ -167,6 +174,10 @@ public class ChessBoardModel implements Serializable{
             this.isGameOver = true;
             this.winner = !isRedTurn ? "黑方" : "红方";
 
+        }
+        else if (!hasAnyLegalMove(isRedTurn)) {
+            this.isGameOver = true;
+            this.winner = !isRedTurn ? "红方" : "黑方";
         }
         else if (isGeneraInCheck(isRedTurn)) {
             // 顺便处理“将军”的提示
@@ -326,6 +337,40 @@ public class ChessBoardModel implements Serializable{
                 return piece;
         }
         return null;
+    }
+
+    public boolean hasAnyLegalMove(boolean isRedTurn) {
+        for (AbstractPiece piece : pieces) {
+            if (piece.isRed() == isRedTurn) {
+                List<Point> moves = piece.getLegalMoves(this);
+                // 必须模拟走一步，看走完会不会送将（getLegalMoves 里通常只判断了行棋规则，没判断送将）
+                // 如果你的 getLegalMoves 已经包含了“模拟走棋检查送将”，那这里直接 return !moves.isEmpty() 即可
+                // 假设你的 getLegalMoves 只是几何规则：
+                for (Point p : moves) {
+                    if (tryMoveAndCheckSafe(piece, p.y, p.x)) {
+                        return true; // 只要找到一种合法且安全的走法，就不算困毙
+                    }
+                }
+            }
+        }
+        return false; // 一个能走的都没有
+    }
+    public boolean tryMoveAndCheckSafe(AbstractPiece piece, int targetRow, int targetCol) {
+        int oldRow = piece.getRow();
+        int oldCol = piece.getCol();
+        AbstractPiece target = getPieceAt(targetRow, targetCol);
+
+        // 模拟移动
+        if (target != null) pieces.remove(target);
+        piece.moveTo(targetRow, targetCol);
+
+        boolean safe = !isGeneraInCheck(piece.isRed());
+
+        // 还原
+        piece.moveTo(oldRow, oldCol);
+        if (target != null) pieces.add(target);
+
+        return safe;
     }
 
     /**

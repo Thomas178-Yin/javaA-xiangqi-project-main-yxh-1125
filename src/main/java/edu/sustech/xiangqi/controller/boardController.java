@@ -345,8 +345,10 @@ public class boardController {
         clearMoveIndicators();
         List<Point> moves = piece.getLegalMoves(model);
         for (Point p : moves) {
-            Point2D pos = XiangQiApp.getVisualPosition(p.y, p.x);
-            spawn("MoveIndicator", pos);
+            if (model.tryMoveAndCheckSafe(piece, p.y, p.x)){
+                Point2D pos = XiangQiApp.getVisualPosition(p.y, p.x);
+                spawn("MoveIndicator", pos);
+            }
         }
     }
 }

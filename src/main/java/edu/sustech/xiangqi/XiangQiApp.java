@@ -449,9 +449,27 @@ public class XiangQiApp extends GameApplication {
     }
 
     private void tryStartCustomGame(boolean isRedFirst) {
-        if (model.FindKing(true) == null || model.FindKing(false) == null) {
-            getDialogService().showMessageBox("规则错误：\n红黑双方必须各有一只帅/将才能开始！");
+        AbstractPiece redKing = model.FindKing(true);
+        AbstractPiece blackKing = model.FindKing(false);
+
+        if (redKing == null || blackKing == null) {
+            getDialogService().showMessageBox("必须各有一个将/帅！");
             return;
+        }
+        if (redKing.getCol() == blackKing.getCol()) {
+            int minRow = Math.min(redKing.getRow(), blackKing.getRow());
+            int maxRow = Math.max(redKing.getRow(), blackKing.getRow());
+            boolean hasBlocker = false;
+            for (int r = minRow + 1; r < maxRow; r++) {
+                if (model.getPieceAt(r, redKing.getCol()) != null) {
+                    hasBlocker = true;
+                    break;
+                }
+            }
+            if (!hasBlocker) {
+                getDialogService().showMessageBox("规则错误：\n将帅不能直接照面（飞将）！\n请在中间添加棋子或移动位置。");
+                return;
+            }
         }
 
         // 【核心】保存当前排局的快照，以便重新开始时恢复
