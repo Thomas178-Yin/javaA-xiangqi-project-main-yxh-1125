@@ -28,6 +28,7 @@ public class MainMenuScene extends FXGLMenu {
     private VBox loginSelectionView;
     private VBox userLoginFormView;
     private VBox mainMenuView;
+    private VBox onlineLobbyView; // 新增：联机大厅视图
 
     // 登录表单控件
     private TextField inputUser;
@@ -35,6 +36,7 @@ public class MainMenuScene extends FXGLMenu {
     private PasswordField inputConfirmPass;
     private VBox confirmBox;
     private Label statusLabel;
+
 
     private boolean isRegistering = false;
 
@@ -76,6 +78,8 @@ public class MainMenuScene extends FXGLMenu {
         initLoginSelectionView();
         initUserLoginFormView();
         initMainMenuView();
+        initOnlineLobbyView();
+
 
         // 默认显示登录选择界面
         switchView(loginSelectionView);
@@ -247,6 +251,7 @@ public class MainMenuScene extends FXGLMenu {
             XiangQiApp app = (XiangQiApp) FXGL.getApp();
             app.setCustomMode(false);
             app.setLoadedGame(false);
+            app.setOnlineLaunch(false); // 确保关闭联网标记
             fireNewGame();
         });
 
@@ -254,21 +259,35 @@ public class MainMenuScene extends FXGLMenu {
             XiangQiApp app = (XiangQiApp) FXGL.getApp();
             app.setCustomMode(true);
             app.setLoadedGame(false);
+            app.setOnlineLaunch(false); // 确保关闭联网标记
             fireNewGame();
         });
 
         var btnLoadGame = new PixelatedButton("读取存档", "Button1", () -> {
             XiangQiApp app = (XiangQiApp) FXGL.getApp();
+            app.setOnlineLaunch(false); // 确保关闭联网标记
             app.openLoadDialog();
         });
 
         var btnLogout = new PixelatedButton("注销登录", "Button1", () -> {
             XiangQiApp app = (XiangQiApp) FXGL.getApp();
+            app.setOnlineLaunch(false); // 确保关闭联网标记
             app.loginAsGuest();
             switchView(loginSelectionView);
         });
 
-        mainMenuView = new VBox(10, btnNewGame, btnCustomGame, btnLoadGame, btnLogout);
+        // 【新增】联网对战按钮
+        var btnOnlineGame = new PixelatedButton("联网对战", "Button1", () -> {
+            XiangQiApp app = (XiangQiApp) FXGL.getApp();
+            if (app.isGuest()) {
+                // 如果是游客，弹窗提示并拦截
+                FXGL.getDialogService().showMessageBox("游客模式无法进行联网对战。\n请注销后注册或登录账号！");
+                return;
+            }
+            switchView(onlineLobbyView);
+        });
+
+        mainMenuView = new VBox(10, btnNewGame, btnCustomGame, btnLoadGame, btnOnlineGame,btnLogout);
         mainMenuView.setAlignment(Pos.CENTER);
     }
 
@@ -277,5 +296,58 @@ public class MainMenuScene extends FXGLMenu {
         if (targetView != null) {
             contentBox.getChildren().add(targetView);
         }
+    }
+
+    /**
+     * 界面4：联机大厅 (输入 IP 和 房间号)
+     */
+    private void initOnlineLobbyView() {
+        // 1. 标题
+        Label title = new Label("联机大厅");
+        title.setStyle("-fx-text-fill: white; -fx-font-size: 40px; -fx-effect: dropshadow(one-pass-box, black, 3, 0, 0, 0);");
+
+        // 2. IP 输入
+        Label lblIp = new Label("服务器 IP:");
+        lblIp.setStyle("-fx-text-fill: #ddd; -fx-font-size: 18px;");
+        TextField ipField = new TextField("127.0.0.1"); // 默认本机
+        ipField.setMaxWidth(250);
+        ipField.setStyle("-fx-font-size: 16px;");
+
+        // 3. 房间号输入
+        Label lblRoom = new Label("房间号 (任意数字):");
+        lblRoom.setStyle("-fx-text-fill: #ddd; -fx-font-size: 18px;");
+        TextField roomField = new TextField("1001");
+        roomField.setMaxWidth(250);
+        roomField.setStyle("-fx-font-size: 16px;");
+
+        // 4. 状态提示
+        Text statusText = new Text("准备连接...");
+        statusText.setFill(Color.YELLOW);
+        try {
+            statusText.setFont(FXGL.getAssetLoader().loadFont("HYPixel11pxU-2.ttf").newFont(16));
+        } catch (Exception e) {}
+
+        // 5. 按钮
+        var btnConnect = new PixelatedButton("连接并加入", "Button1", () -> {
+            String ip = ipField.getText();
+            String room = roomField.getText();
+            if (room.isEmpty()) {
+                statusText.setText("请输入房间号！");
+                return;
+            }
+            statusText.setText("正在连接...");
+
+            // 【核心】调用 App 的方法开始连接
+            XiangQiApp app = (XiangQiApp) FXGL.getApp();
+            app.startOnlineConnection(ip, room, statusText);
+        });
+
+        var btnBack = new PixelatedButton("返 回", "Button1", () -> {
+            switchView(mainMenuView); // 返回主菜单
+        });
+
+        // 6. 布局
+        onlineLobbyView = new VBox(15, title, lblIp, ipField, lblRoom, roomField, statusText, btnConnect, btnBack);
+        onlineLobbyView.setAlignment(Pos.CENTER);
     }
 }

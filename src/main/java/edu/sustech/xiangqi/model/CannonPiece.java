@@ -10,6 +10,11 @@ public class CannonPiece extends AbstractPiece {
     }
 
     @Override
+    public AbstractPiece copy() {
+        return new CannonPiece(this.getName(), this.getRow(), this.getCol(), this.isRed());
+    }
+
+    @Override
     public boolean canMoveTo(int targetRow, int targetCol, ChessBoardModel model) {
         // 1. 获取所有合法的走法列表
         List<Point> legalMoves = getLegalMoves(model);

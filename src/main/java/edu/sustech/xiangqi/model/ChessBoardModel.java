@@ -5,6 +5,9 @@ import java.util.ArrayList;
 import java.io.Serializable;
 import java.util.List;
 import java.util.Stack; // 需要 import
+
+import com.almasb.fxgl.dsl.FXGL;
+import edu.sustech.xiangqi.XiangQiApp;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 
@@ -21,6 +24,8 @@ public class ChessBoardModel implements Serializable{
     private String winner;
     private final Stack<MoveCommand> moveHistory = new Stack<>();
     private transient ObservableList<String> moveHistoryStrings = FXCollections.observableArrayList();
+    public boolean aiMode = false;
+
 
 
     //让视图检查是否结束
@@ -142,9 +147,8 @@ public class ChessBoardModel implements Serializable{
         if (!piece.canMoveTo(newRow, newCol, this)) {
             return false;
         }
-        if (!tryMoveAndCheckSafe(piece, newRow, newCol)) {
-            // 你可以在这里打印一句调试信息，或者在 Controller 层弹窗提示
-            System.out.println("非法移动：不能送将！");
+        if (!tryMoveAndCheckSafe(piece, newRow, newCol) && !aiMode) {
+            System.out.println("非法移动：不能送将（自杀）！");
             return false;
         }
 
@@ -154,11 +158,14 @@ public class ChessBoardModel implements Serializable{
 
         if (getPieceAt(newRow, newCol) != null) {
              if(getPieceAt(newRow, newCol) instanceof GeneralPiece){
-                 this.isGameOver = true;
-                 this.winner = isRedTurn ? "红方" : "黑方";
+                     this.isGameOver = true;
+                     this.winner = isRedTurn ? "红方" : "黑方";
                  pieces.remove(getPieceAt(newRow, newCol));
                  piece.moveTo(newRow, newCol);
+                 isRedTurn = !isRedTurn;
+                 moveHistory.push(command);
                  return true;
+
              }
              pieces.remove(getPieceAt(newRow, newCol));
          }
@@ -166,38 +173,40 @@ public class ChessBoardModel implements Serializable{
         if (isGameOver) {
             return false;
         }
-        //换边
         isRedTurn = !isRedTurn;
 
-        // 先检查有没有把自己害死
-        if (isCheckMate(!isRedTurn)) {
-            this.isGameOver = true;
-            this.winner = !isRedTurn ? "黑方" : "红方";
+       if(!aiMode) { // 先检查有没有把自己害死
+           if (isCheckMate(!isRedTurn)) {
+               this.isGameOver = true;
+               this.winner = !isRedTurn ? "黑方" : "红方";
 
-        }
-        else if (!hasAnyLegalMove(isRedTurn)) {
-            this.isGameOver = true;
-            this.winner = !isRedTurn ? "红方" : "黑方";
-        }
-        else if (isGeneraInCheck(isRedTurn)) {
-            // 顺便处理“将军”的提示
-            System.out.println("将军!");
-        }
+           } else if (isGeneraInCheck(isRedTurn)) {
+               // 顺便处理“将军”的提示
+           }
 
 
-        //在检查另一方
-        if (isCheckMate(isRedTurn)) {
-            this.isGameOver = true;
-            this.winner = isRedTurn ? "黑方" : "红方";
-
-            System.out.println("游戏结束!。胜利者是: " + this.winner);
-        }
-        else if (isGeneraInCheck(isRedTurn)) {
-            // 顺便处理“将军”的提示
-            System.out.println("将军!");
-        }
+           //在检查另一方
+           if (isCheckMate(isRedTurn)) {
+               this.isGameOver = true;
+               this.winner = !isRedTurn ? "黑方" : "红方"; // 上一步走棋的人赢
+//               System.out.println("绝杀！胜利者: " + this.winner);
+           }
+           // 2. 【新增】检查是否困毙 (Stalemate)
+           else if (!hasAnyLegalMove(isRedTurn)) {
+               this.isGameOver = true;
+               this.winner = !isRedTurn ? "黑方" : "红方";
+//               System.out.println("困毙！胜利者: " + this.winner);
+           }
+           // 3. 将军提示
+           else if (isGeneraInCheck(isRedTurn)) {
+               System.out.println("将军!");
+           }
+       }
         moveHistory.push(command);
-        updateHistoryStrings();
+        if (!aiMode) {
+            updateHistoryStrings();
+        }
+
 
         return true;
     }
@@ -208,9 +217,9 @@ public class ChessBoardModel implements Serializable{
      */
     public boolean undoMove() {
         if (moveHistory.isEmpty()) {
-            System.out.println("No moves to undo!");
             return false;
         }
+
 
         // 1. 从历史记录中弹出上一步的命令
         MoveCommand lastMove = moveHistory.pop();
@@ -236,7 +245,7 @@ public class ChessBoardModel implements Serializable{
             winner = null;
         }
 
-        System.out.println("Undo successful!");
+
         updateHistoryStrings();
 
         return true;
@@ -339,38 +348,49 @@ public class ChessBoardModel implements Serializable{
         return null;
     }
 
-    public boolean hasAnyLegalMove(boolean isRedTurn) {
+    public boolean tryMoveAndCheckSafe(AbstractPiece piece, int targetRow, int targetCol) {
+        // 1. 记录原始状态
+        int oldRow = piece.getRow();
+        int oldCol = piece.getCol();
+        AbstractPiece targetPiece = getPieceAt(targetRow, targetCol);
+
+        // 2. 模拟移动
+        // 如果目标点有子，先暂时移除
+        if (targetPiece != null) {
+            pieces.remove(targetPiece);
+        }
+        // 移动当前棋子
+        piece.setRow(targetRow);
+        piece.setCol(targetCol);
+
+        // 3. 检查己方老将是否被将军
+        boolean isSafe = !isGeneraInCheck(piece.isRed());
+
+        // 4. 恢复原始状态 (回溯)
+        piece.setRow(oldRow);
+        piece.setCol(oldCol);
+        if (targetPiece != null) {
+            pieces.add(targetPiece);
+        }
+
+        return isSafe;
+    }
+
+    // --- 【新增】困毙检测：检查某一方是否还有任何合法且安全的走法 ---
+    public boolean hasAnyLegalMove(boolean checkRed) {
         for (AbstractPiece piece : pieces) {
-            if (piece.isRed() == isRedTurn) {
-                List<Point> moves = piece.getLegalMoves(this);
-                // 必须模拟走一步，看走完会不会送将（getLegalMoves 里通常只判断了行棋规则，没判断送将）
-                // 如果你的 getLegalMoves 已经包含了“模拟走棋检查送将”，那这里直接 return !moves.isEmpty() 即可
-                // 假设你的 getLegalMoves 只是几何规则：
-                for (Point p : moves) {
+            // 只检查己方棋子
+            if (piece.isRed() == checkRed) {
+                List<java.awt.Point> moves = piece.getLegalMoves(this);
+                for (java.awt.Point p : moves) {
+                    // 只要发现有一个走法是安全的，就说明没被困毙
                     if (tryMoveAndCheckSafe(piece, p.y, p.x)) {
-                        return true; // 只要找到一种合法且安全的走法，就不算困毙
+                        return true;
                     }
                 }
             }
         }
         return false; // 一个能走的都没有
-    }
-    public boolean tryMoveAndCheckSafe(AbstractPiece piece, int targetRow, int targetCol) {
-        int oldRow = piece.getRow();
-        int oldCol = piece.getCol();
-        AbstractPiece target = getPieceAt(targetRow, targetCol);
-
-        // 模拟移动
-        if (target != null) pieces.remove(target);
-        piece.moveTo(targetRow, targetCol);
-
-        boolean safe = !isGeneraInCheck(piece.isRed());
-
-        // 还原
-        piece.moveTo(oldRow, oldCol);
-        if (target != null) pieces.add(target);
-
-        return safe;
     }
 
     /**
@@ -465,4 +485,67 @@ public class ChessBoardModel implements Serializable{
     public static int getCols() {
         return COLS;
     }
+
+    /**
+     * 获取指定阵营目前所有的合法走法
+     * @param isRed true获取红方走法，false获取黑方
+     * @return 封装好的 MoveCommand 列表
+     */
+    public List<MoveCommand> getAllLegalMoves(boolean isRed) {
+        List<MoveCommand> moves = new ArrayList<>();
+
+        for (AbstractPiece piece : pieces) {
+            // 只处理指定阵营的棋子
+            if (piece.isRed() == isRed) {
+                // 获取该棋子所有落点
+                List<Point> legalPoints = piece.getLegalMoves(this);
+
+                for (Point p : legalPoints) {
+                    int targetRow = p.y;
+                    int targetCol = p.x;
+                    AbstractPiece targetPiece = getPieceAt(targetRow, targetCol);
+                    moves.add(new MoveCommand(piece, targetRow, targetCol, targetPiece));
+                }
+            }
+        }
+        return moves;
+    }
+
+    public ChessBoardModel deepClone() {
+        ChessBoardModel newModel = new ChessBoardModel();
+
+        // 1. 清空新棋盘默认初始化的棋子（因为构造函数里可能自带了初始化）
+        newModel.pieces.clear();
+        newModel.moveHistory.clear(); // 历史记录不用克隆，AI 不需要知道以前发生了什么
+
+        // 2. 复制基本状态
+        newModel.isRedTurn = this.isRedTurn;
+        newModel.isGameOver = this.isGameOver;
+        newModel.winner = this.winner;
+        newModel.aiMode = true; // 克隆出来的棋盘，默认就是 AI 模式（静音模式）
+
+        // 3. 【核心】深拷贝每一个棋子
+        for (AbstractPiece piece : this.pieces) {
+            AbstractPiece clonedPiece = piece.copy();
+            newModel.pieces.add(clonedPiece);
+        }
+
+        return newModel;
+    }
+
+    public void reset() {
+        // 1. 清空当前数据
+        pieces.clear();
+        moveHistory.clear();
+        if (moveHistoryStrings != null) moveHistoryStrings.clear();
+
+        // 2. 恢复初始状态
+        isGameOver = false;
+        winner = null;
+        isRedTurn = true; // 永远是红方先手
+
+        // 3. 重新摆放棋子
+        initializePieces();
+    }
+
 }

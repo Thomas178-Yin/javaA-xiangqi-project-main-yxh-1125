@@ -55,5 +55,10 @@ public class ChariotPiece extends AbstractPiece {
             super(name, row, col, isRed);
         }
 
+    @Override
+    public AbstractPiece copy() {
+        return new ChariotPiece(this.getName(), this.getRow(), this.getCol(), this.isRed());
     }
+
+}
 

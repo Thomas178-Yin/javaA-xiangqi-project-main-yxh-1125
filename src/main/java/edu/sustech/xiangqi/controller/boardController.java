@@ -3,12 +3,16 @@ package edu.sustech.xiangqi.controller;
 import com.almasb.fxgl.animation.Interpolators;
 import com.almasb.fxgl.dsl.FXGL;
 import com.almasb.fxgl.entity.Entity;
-import com.almasb.fxgl.entity.SpawnData;
+import com.almasb.fxgl.time.TimerAction;
 import edu.sustech.xiangqi.EntityType;
 import edu.sustech.xiangqi.XiangQiApp;
+import edu.sustech.xiangqi.ai.AIService;
+import edu.sustech.xiangqi.model.*;
+import edu.sustech.xiangqi.net.NetworkClient;
 import edu.sustech.xiangqi.view.PieceComponent;
 import edu.sustech.xiangqi.view.VisualStateComponent;
-import edu.sustech.xiangqi.model.*;
+import javafx.application.Platform;
+import javafx.concurrent.Task;
 import javafx.geometry.Point2D;
 import javafx.geometry.Rectangle2D;
 import javafx.scene.shape.Rectangle;
@@ -25,25 +29,193 @@ public class boardController {
 
     private ChessBoardModel model;
     private Entity selectedEntity = null;
+    private final AIService aiService = new AIService();
+    private NetworkClient netClient;
+    private boolean isOnlineMode = false;
+
+    // 记录联机模式下自己的阵营
+    private boolean amIRed = true;
+
+    private TimerAction aiAutoStartTimer = null;
 
     public boardController(ChessBoardModel model) {
         this.model = model;
     }
 
+    // =========================================================
+    //                 网络 / 联机逻辑
+    // =========================================================
+
+    public void connectToRoom(String ip, String roomId) {
+        isOnlineMode = true;
+        netClient = new NetworkClient();
+        netClient.setOnMessage(this::onNetworkMessage);
+
+        ((XiangQiApp) FXGL.getApp()).getInputHandler().setLocked(true);
+        getDialogService().showMessageBox("正在连接服务器 (房间 " + roomId + ")...");
+
+        new Thread(() -> {
+            try {
+                netClient.connect(ip, 9999, roomId);
+            } catch (Exception e) {
+                Platform.runLater(() -> getDialogService().showMessageBox("连接失败: " + e.getMessage()));
+            }
+        }).start();
+    }
+
+    /**
+     * 处理服务器发来的所有消息
+     */
+    private void onNetworkMessage(String msg) {
+        Platform.runLater(() -> {
+            System.out.println("[网络消息] " + msg);
+
+            if (msg.startsWith("START")) {
+                if (msg.contains("RED")) {
+                    amIRed = true;
+                    getDialogService().showMessageBox("匹配成功！你是红方 (先手)");
+                } else {
+                    amIRed = false;
+                    getDialogService().showMessageBox("匹配成功！你是黑方 (后手)");
+                }
+                syncInputLock();
+            }
+            else if (msg.startsWith("MOVE")) {
+                String[] parts = msg.split(" ");
+                int r1 = Integer.parseInt(parts[1]);
+                int c1 = Integer.parseInt(parts[2]);
+                int r2 = Integer.parseInt(parts[3]);
+                int c2 = Integer.parseInt(parts[4]);
+
+                AbstractPiece piece = model.getPieceAt(r1, c1);
+                if (piece != null) {
+                    executeMove(piece, r2, c2, true);
+                    syncInputLock(); // 对方走完，轮到我解锁
+                }
+            }
+            else if (msg.equals("SURRENDER")) {
+                model.endGame(amIRed ? "红方" : "黑方");
+                showGameOverBanner();
+            }
+            // --- 协议处理 ---
+            else if (msg.equals("UNDO_REQUEST")) {
+                getDialogService().showConfirmationBox("对方请求悔棋，是否同意？", yes -> {
+                    netClient.sendRaw(yes ? "UNDO_AGREE" : "UNDO_REFUSE");
+                    if (yes) doUndo();
+                });
+            }
+            else if (msg.equals("UNDO_AGREE")) {
+                getDialogService().showMessageBox("对方同意悔棋。");
+                doUndo();
+            }
+            else if (msg.equals("UNDO_REFUSE")) {
+                getDialogService().showMessageBox("对方拒绝悔棋。");
+            }
+            else if (msg.equals("RESTART_REQUEST")) {
+                getDialogService().showConfirmationBox("对方请求重新开始，是否同意？", yes -> {
+                    netClient.sendRaw(yes ? "RESTART_AGREE" : "RESTART_REFUSE");
+                    if (yes) doRestart();
+                });
+            }
+            else if (msg.equals("RESTART_AGREE")) {
+                getDialogService().showMessageBox("对方同意重新开始。");
+                doRestart();
+            }
+            else if (msg.equals("RESTART_REFUSE")) {
+                getDialogService().showMessageBox("对方拒绝重新开始。");
+            }
+            else if (msg.equals("SWAP_REQUEST")) {
+                getDialogService().showConfirmationBox("对方请求交换先手并重开，是否同意？", yes -> {
+                    netClient.sendRaw(yes ? "SWAP_AGREE" : "SWAP_REFUSE");
+                    if (yes) doSwapAndRestart();
+                });
+            }
+            else if (msg.equals("SWAP_AGREE")) {
+                getDialogService().showMessageBox("对方同意交换先手。");
+                doSwapAndRestart();
+            }
+            else if (msg.equals("SWAP_REFUSE")) {
+                getDialogService().showMessageBox("对方拒绝交换先手。");
+            }
+        });
+    }
+
+    // --- 本地执行动作 (网络指令的接收端) ---
+
+    private void syncInputLock() {
+        if (!isOnlineMode) return;
+        // 如果当前回合是我的颜色，解锁；否则锁住
+        if (model.isRedTurn() == amIRed) {
+            ((XiangQiApp) FXGL.getApp()).getInputHandler().setLocked(false);
+        } else {
+            ((XiangQiApp) FXGL.getApp()).getInputHandler().setLocked(true);
+        }
+    }
+
+    private void doUndo() {
+        if (model.undoMove()) {
+            refreshBoardView();
+            syncInputLock();
+        }
+    }
+
+    private void doRestart() {
+        // 【关键】联机模式不能销毁 Controller，必须软重置
+        model.reset();
+        refreshBoardView();
+
+        // 重置 UI 状态
+        XiangQiApp app = getAppCast();
+        app.getGameOverDimmingRect().setVisible(false);
+        app.getGameOverBanner().setVisible(false);
+
+        syncInputLock();
+    }
+
+    private void doSwapAndRestart() {
+        amIRed = !amIRed; // 交换身份
+        doRestart();
+        String role = amIRed ? "红方 (先手)" : "黑方 (后手)";
+        getDialogService().showMessageBox("身份已交换，现在你是：" + role);
+    }
+
+    private void refreshBoardView() {
+        XiangQiApp app = getAppCast();
+        app.spawnPiecesFromModel();
+        updateTurnIndicator();
+        deselectPiece();
+    }
+
+    // --- 发送请求 (UI 按钮调用) ---
+
+    public void surrenderOnline() {
+        if (!isOnlineMode) return;
+        getDialogService().showConfirmationBox("确定要投降吗？", yes -> {
+            if (yes) {
+                netClient.sendRaw("SURRENDER");
+                model.endGame(!amIRed ? "红方" : "黑方");
+                showGameOverBanner();
+            }
+        });
+    }
+    public void undoOnline() { if (isOnlineMode) { netClient.sendRaw("UNDO_REQUEST"); getDialogService().showMessageBox("请求已发送..."); } }
+    public void restartOnline() { if (isOnlineMode) { netClient.sendRaw("RESTART_REQUEST"); getDialogService().showMessageBox("请求已发送..."); } }
+    public void swapOnline() { if (isOnlineMode) { netClient.sendRaw("SWAP_REQUEST"); getDialogService().showMessageBox("请求已发送..."); } }
+
+
+    // =========================================================
+    //                 本地交互逻辑
+    // =========================================================
+
     public void onGridClicked(int row, int col) {
         XiangQiApp app = getAppCast();
-
         if (app.isSettingUp()) {
             handleSetupClick(row, col, app);
             return;
         }
-
-        if (model.isGameOver()) {
-            return;
-        }
+        if (model.isGameOver()) return;
 
         Entity clickedEntity = findEntityAt(row, col);
-
         if (selectedEntity != null) {
             if (clickedEntity == selectedEntity) {
                 deselectPiece();
@@ -57,184 +229,12 @@ public class boardController {
         }
     }
 
-    /**
-     * 【核心修改】处理排局模式下的点击
-     */
-    private void handleSetupClick(int row, int col, XiangQiApp app) {
-        AbstractPiece existingPiece = model.getPieceAt(row, col);
-        String selectedType = app.getSelectedPieceType();
-
-        // --- 逻辑 1：橡皮擦模式 ---
-        // 如果当前选中的是“橡皮擦”（在App里设置）
-        if ("Eraser".equals(selectedType)) {
-            if (existingPiece != null) {
-                model.getPieces().remove(existingPiece);
-                app.spawnPiecesFromModel();
-                FXGL.play("按钮音效1.mp3"); // 播放移除音效
-            }
-            return;
-        }
-
-        // --- 逻辑 2：放置模式 ---
-        if (selectedType != null) {
-            boolean isRed = app.isSelectedPieceRed();
-
-            // 【新增需求】点击相同类型的棋子 -> 执行删除（橡皮擦逻辑）
-            if (existingPiece != null) {
-                // 检查颜色和类型是否完全一致
-                if (existingPiece.isRed() == isRed &&
-                        existingPiece.getClass().getSimpleName().startsWith(selectedType)) {
-
-                    model.getPieces().remove(existingPiece);
-                    app.spawnPiecesFromModel();
-                    return; // 删完就走，不放新的
-                }
-            }
-
-            // 创建新棋子准备放置
-            AbstractPiece newPiece = createPiece(selectedType, row, col, isRed);
-
-            // --- 位置合法性校验 ---
-
-            // A. 将/帅 校验 (九宫格)
-            if (newPiece instanceof GeneralPiece) {
-                // 1. 范围校验
-                if (!isValidPalace(newPiece)) {
-                    getDialogService().showMessageBox(newPiece.getName() + " 只能放在九宫格内！");
-                    return;
-                }
-                // 2. 唯一性校验（移除旧的）
-                AbstractPiece oldKing = model.FindKing(newPiece.isRed());
-                if (oldKing != null && (oldKing.getRow() != row || oldKing.getCol() != col)) {
-                    model.getPieces().remove(oldKing);
-                }
-            }
-
-            // B. 士/仕 校验 (九宫格内的5个点)
-            if (newPiece instanceof AdvisorPiece) {
-                if (!isValidAdvisorPosition(newPiece)) {
-                    getDialogService().showMessageBox(newPiece.getName() + " 位置不合法！\n必须在九宫格的斜线或中心点上。");
-                    return;
-                }
-            }
-
-            // C. 象/相 校验 (本方阵地7个点)
-            if (newPiece instanceof ElephantPiece) {
-                if (!isValidElephantPosition(newPiece)) {
-                    getDialogService().showMessageBox(newPiece.getName() + " 位置不合法！\n只能放在本方阵地的合法人字位，且不能过河。");
-                    return;
-                }
-            }
-
-            // D. 兵/卒 (可选)
-            // 兵卒在其实际规则中初始位置只能在特定点，但排局通常允许任意位置（除了底线），暂不严格限制
-
-            // --- 执行放置 ---
-            model.addPiece(newPiece);
-            app.spawnPiecesFromModel();
-            FXGL.play("按钮音效1.mp3");
-
-        } else {
-            // --- 逻辑 3：未选中任何工具，点击已有棋子 -> 删除 ---
-            if (existingPiece != null) {
-                model.getPieces().remove(existingPiece);
-                app.spawnPiecesFromModel();
-            }
-        }
-    }
-
-    // --- 校验辅助方法 ---
-
-    /**
-     * 判断是否在九宫格范围内 (用于将/帅基础校验)
-     */
-    private boolean isValidPalace(AbstractPiece p) {
-        int r = p.getRow();
-        int c = p.getCol();
-        if (c < 3 || c > 5) return false; // 列必须在 3-5
-        if (p.isRed()) {
-            return r >= 7 && r <= 9; // 红方 7-9
-        } else {
-            return r >= 0 && r <= 2; // 黑方 0-2
-        }
-    }
-
-    /**
-     * 判断是否为合法的士/仕位置 (九宫格内的5个点)
-     */
-    private boolean isValidAdvisorPosition(AbstractPiece p) {
-        // 先检查是否在九宫格大范围内
-        if (!isValidPalace(p)) return false;
-
-        int r = p.getRow();
-        int c = p.getCol();
-
-        // 合法点位特征：
-        // 黑方: (0,3), (0,5), (1,4), (2,3), (2,5)
-        // 红方: (9,3), (9,5), (8,4), (7,3), (7,5)
-        // 规律：row + col 的奇偶性，或者枚举
-
-        // 中心点总是合法的
-        if (p.isRed()) {
-            if (r == 8 && c == 4) return true;
-        } else {
-            if (r == 1 && c == 4) return true;
-        }
-
-        // 四角点 (列必须是3或5)
-        return c == 3 || c == 5;
-    }
-
-    /**
-     * 判断是否为合法的象/相位置 (7个固定点)
-     */
-    private boolean isValidElephantPosition(AbstractPiece p) {
-        int r = p.getRow();
-        int c = p.getCol();
-
-        // 1. 绝对不能过河
-        if (p.isRed() && r < 5) return false;
-        if (!p.isRed() && r > 4) return false;
-
-        // 2. 只能在固定的 7 个点
-        // 黑方(Row 0-4): (0,2), (0,6), (2,0), (2,4), (2,8), (4,2), (4,6)
-        // 红方(Row 5-9): (5,2), (5,6), (7,0), (7,4), (7,8), (9,2), (9,6)
-
-        // 简便算法：列必须是偶数，且满足特定组合
-        if (c % 2 != 0) return false; // 必须偶数列
-
-        if (p.isRed()) {
-            // 红方行: 5, 7, 9
-            if (r == 5 || r == 9) return c == 2 || c == 6;
-            if (r == 7) return c == 0 || c == 4 || c == 8;
-        } else {
-            // 黑方行: 0, 2, 4
-            if (r == 0 || r == 4) return c == 2 || c == 6;
-            if (r == 2) return c == 0 || c == 4 || c == 8;
-        }
-        return false;
-    }
-
-
-    private AbstractPiece createPiece(String type, int row, int col, boolean isRed) {
-        String name = "";
-        switch (type) {
-            case "General":  name = isRed ? "帅" : "将"; return new GeneralPiece(name, row, col, isRed);
-            case "Advisor":  name = isRed ? "仕" : "士"; return new AdvisorPiece(name, row, col, isRed);
-            case "Elephant": name = isRed ? "相" : "象"; return new ElephantPiece(name, row, col, isRed);
-            case "Horse":    name = "马"; return new HorsePiece(name, row, col, isRed);
-            case "Chariot":  name = "车"; return new ChariotPiece(name, row, col, isRed);
-            case "Cannon":   name = "炮"; return new CannonPiece(name, row, col, isRed);
-            case "Soldier":  name = isRed ? "兵" : "卒"; return new SoldierPiece(name, row, col, isRed);
-            default: return new SoldierPiece("兵", row, col, isRed);
-        }
-    }
-
-    // --- 以下保持原有逻辑不变 ---
-    // (请确保你原有的 findEntityAt, handleSelection, deselectPiece, handleMove 等方法都在这里)
-
     private void handleSelection(Entity pieceEntity) {
         AbstractPiece logicPiece = pieceEntity.getComponent(PieceComponent.class).getPieceLogic();
+
+        // 联机模式下只能选自己的棋子
+        if (isOnlineMode && logicPiece.isRed() != amIRed) return;
+
         if (logicPiece.isRed() == model.isRedTurn()) {
             this.selectedEntity = pieceEntity;
             this.selectedEntity.getComponent(VisualStateComponent.class).setInactive();
@@ -242,6 +242,249 @@ public class boardController {
         }
     }
 
+    private void handleMove(int targetRow, int targetCol) {
+        AbstractPiece pieceToMove = selectedEntity.getComponent(PieceComponent.class).getPieceLogic();
+        int r1 = pieceToMove.getRow();
+        int c1 = pieceToMove.getCol();
+
+        // 统一执行移动
+        boolean success = executeMove(pieceToMove, targetRow, targetCol, false);
+
+        if (success) {
+            if (isOnlineMode) {
+                netClient.sendMove(r1, c1, targetRow, targetCol);
+                syncInputLock();
+            } else {
+                // 本地模式：检测是否启用 AI
+                XiangQiApp app = (XiangQiApp) FXGL.getApp();
+                // 只有当 AI 开启，且当前轮到黑方时，触发 AI
+                if (app.isAIEnabled() && !model.isRedTurn() && !model.isGameOver()) {
+                    startAITurn();
+                }
+            }
+        }
+        deselectPiece();
+    }
+
+    // 通用执行方法
+    private boolean executeMove(AbstractPiece piece, int targetRow, int targetCol, boolean isRemote) {
+        Entity pieceEntity = findEntityByLogic(piece);
+        if (pieceEntity == null) return false;
+
+        AbstractPiece targetLogic = model.getPieceAt(targetRow, targetCol);
+        Entity targetEntity = findEntityByLogic(targetLogic);
+        Point2D startPos = pieceEntity.getPosition();
+
+        boolean success = model.movePiece(piece, targetRow, targetCol);
+
+        if (success) {
+            playMoveAndEndGameAnimation(pieceEntity, targetEntity, startPos, targetRow, targetCol);
+        }
+        return success;
+    }
+
+    // =========================================================
+    //                 AI 逻辑
+    // =========================================================
+
+    public void startAITurn() {
+        // 锁住 UI 防止人类干扰
+        ((XiangQiApp) FXGL.getApp()).getInputHandler().setLocked(true);
+
+        Task<AIService.MoveResult> aiTask = new Task<>() {
+            @Override
+            protected AIService.MoveResult call() throws Exception {
+                // 深度 4，假定 AI 执黑 (false)
+                return aiService.search(model, 4, false);
+            }
+        };
+
+        aiTask.setOnSucceeded(e -> {
+            if (!model.isGameOver() && !model.isRedTurn()) {
+                AIService.MoveResult res = aiTask.getValue();
+                if (res != null && res.move != null) {
+                    MoveCommand cmd = res.move;
+                    AbstractPiece realPiece = model.getPieceAt(cmd.getStartRow(), cmd.getStartCol());
+                    if (realPiece != null) {
+                        executeMove(realPiece, cmd.getEndRow(), cmd.getEndCol(), false);
+                    }
+                }
+            }
+            ((XiangQiApp) FXGL.getApp()).getInputHandler().setLocked(false);
+        });
+
+        aiTask.setOnFailed(e -> ((XiangQiApp) FXGL.getApp()).getInputHandler().setLocked(false));
+        new Thread(aiTask).start();
+    }
+
+    public void requestAIHint() {
+        if (model.isGameOver()) return;
+        getDialogService().showMessageBox("AI正在思考提示...");
+
+        Task<AIService.MoveResult> hintTask = new Task<>() {
+            @Override
+            protected AIService.MoveResult call() throws Exception {
+                return aiService.search(model, 4, model.isRedTurn());
+            }
+        };
+
+        hintTask.setOnSucceeded(e -> {
+            AIService.MoveResult res = hintTask.getValue();
+            if (res != null && res.move != null) {
+                Point2D start = XiangQiApp.getVisualPosition(res.move.getStartRow(), res.move.getStartCol());
+                Point2D end = XiangQiApp.getVisualPosition(res.move.getEndRow(), res.move.getEndCol());
+
+                Entity h1 = spawn("MoveIndicator", start);
+                Entity h2 = spawn("MoveIndicator", end);
+                runOnce(() -> { h1.removeFromWorld(); h2.removeFromWorld(); }, Duration.seconds(3.0));
+            }
+        });
+        new Thread(hintTask).start();
+    }
+
+    // =========================================================
+    //                 排局设置 & 辅助方法
+    // =========================================================
+
+    private void handleSetupClick(int row, int col, XiangQiApp app) {
+        AbstractPiece existing = model.getPieceAt(row, col);
+        String type = app.getSelectedPieceType();
+
+        if ("Eraser".equals(type)) {
+            if (existing != null) { model.getPieces().remove(existing); app.spawnPiecesFromModel(); FXGL.play("按钮音效1.mp3"); }
+            return;
+        }
+
+        if (type != null) {
+            boolean isRed = app.isSelectedPieceRed();
+            // 点击同类棋子删除
+            if (existing != null && existing.isRed() == isRed && existing.getClass().getSimpleName().startsWith(type)) {
+                model.getPieces().remove(existing);
+                app.spawnPiecesFromModel();
+                return;
+            }
+
+            AbstractPiece newPiece = createPiece(type, row, col, isRed);
+
+            // 校验逻辑... (省略具体校验代码以节省空间，功能同上)
+            // 校验将帅唯一性
+            if (newPiece instanceof GeneralPiece) {
+                if (!isValidPalace(newPiece)) { getDialogService().showMessageBox("必须在九宫格内"); return; }
+                AbstractPiece old = model.FindKing(isRed);
+                if (old != null) model.getPieces().remove(old);
+            }
+            // 校验仕
+            if (newPiece instanceof AdvisorPiece && !isValidAdvisorPosition(newPiece)) {
+                getDialogService().showMessageBox("仕位置不合法"); return;
+            }
+            // 校验象
+            if (newPiece instanceof ElephantPiece && !isValidElephantPosition(newPiece)) {
+                getDialogService().showMessageBox("象位置不合法"); return;
+            }
+
+            model.addPiece(newPiece);
+            app.spawnPiecesFromModel();
+            FXGL.play("按钮音效1.mp3");
+        } else if (existing != null) {
+            model.getPieces().remove(existing);
+            app.spawnPiecesFromModel();
+        }
+    }
+
+    // 校验逻辑
+    private boolean isValidPalace(AbstractPiece p) {
+        int r = p.getRow(); int c = p.getCol();
+        if (c < 3 || c > 5) return false;
+        return p.isRed() ? (r >= 7 && r <= 9) : (r >= 0 && r <= 2);
+    }
+    private boolean isValidAdvisorPosition(AbstractPiece p) {
+        if (!isValidPalace(p)) return false;
+        if (p.getCol() == 4) return (p.isRed() ? p.getRow() == 8 : p.getRow() == 1);
+        return true;
+    }
+    private boolean isValidElephantPosition(AbstractPiece p) {
+        int r = p.getRow(); int c = p.getCol();
+        if (c % 2 != 0) return false;
+        if (p.isRed()) {
+            if (r < 5) return false;
+            return (r == 5 || r == 9) ? (c == 2 || c == 6) : (r == 7 && (c == 0 || c == 4 || c == 8));
+        } else {
+            if (r > 4) return false;
+            return (r == 0 || r == 4) ? (c == 2 || c == 6) : (r == 2 && (c == 0 || c == 4 || c == 8));
+        }
+    }
+
+    /**
+     * 【修复】本地/单机模式的投降 (之前报错的地方)
+     */
+    public void surrender() {
+        // 如果误触，当前是联机模式，转交联机处理
+        if (isOnlineMode) {
+            surrenderOnline();
+            return;
+        }
+
+        if (model.isGameOver()) return;
+
+        String winner = model.isRedTurn() ? "黑方" : "红方";
+        model.endGame(winner);
+        showGameOverBanner();
+    }
+
+    /**
+     * 【修复】本地悔棋
+     */
+    public void undo() {
+        if (isOnlineMode) { undoOnline(); return; }
+
+        if (aiAutoStartTimer != null && !aiAutoStartTimer.isExpired()) {
+            aiAutoStartTimer.expire(); aiAutoStartTimer = null;
+        }
+        if (model.undoMove()) {
+            refreshBoardView();
+            // 如果悔棋后轮到 AI，延迟触发
+            if (!model.isRedTurn() && !model.isGameOver()) {
+                XiangQiApp app = (XiangQiApp) FXGL.getApp();
+                if(app.isAIEnabled()) {
+                    aiAutoStartTimer = runOnce(this::startAITurn, Duration.seconds(1.0));
+                }
+            }
+        }
+    }
+
+    /**
+     * 【修复】更新界面回合指示器 (之前报错的地方)
+     */
+    public void updateTurnIndicator() {
+        XiangQiApp app = getAppCast();
+        var indicator = app.getTurnIndicator();
+        if (indicator != null) {
+            indicator.update(model.isRedTurn(), model.isGameOver());
+        }
+    }
+
+    private void showLegalMoves(AbstractPiece piece) {
+        clearMoveIndicators();
+        for (Point p : piece.getLegalMoves(model)) {
+            // 防止送将过滤
+            if (model.tryMoveAndCheckSafe(piece, p.y, p.x)) {
+                spawn("MoveIndicator", XiangQiApp.getVisualPosition(p.y, p.x));
+            }
+        }
+    }
+
+    // 辅助方法
+    private Entity findEntityAt(int row, int col) {
+        Point2D tl = XiangQiApp.getVisualPosition(row, col);
+        return getGameWorld().getEntitiesInRange(new Rectangle2D(tl.getX(), tl.getY(), CELL_SIZE-8, CELL_SIZE-8))
+                .stream().filter(e -> e.isType(EntityType.PIECE)).findFirst().orElse(null);
+    }
+    private Entity findEntityByLogic(AbstractPiece logic) {
+        if (logic == null) return null;
+        return getGameWorld().getEntitiesByType(EntityType.PIECE).stream()
+                .filter(e -> e.getComponent(PieceComponent.class).getPieceLogic() == logic)
+                .findFirst().orElse(null);
+    }
     private void deselectPiece() {
         if (selectedEntity != null) {
             selectedEntity.getComponent(VisualStateComponent.class).setNormal();
@@ -249,106 +492,41 @@ public class boardController {
             clearMoveIndicators();
         }
     }
+    private void clearMoveIndicators() { getGameWorld().getEntitiesByType(EntityType.MOVE_INDICATOR).forEach(Entity::removeFromWorld); }
 
-    private void handleMove(int targetRow, int targetCol) {
-        AbstractPiece pieceToMove = selectedEntity.getComponent(PieceComponent.class).getPieceLogic();
-        Entity entityToMove = this.selectedEntity;
-        Point2D startPosition = entityToMove.getPosition();
-        Entity capturedEntity = findEntityAt(targetRow, targetCol);
-        boolean moveSuccess = model.movePiece(pieceToMove, targetRow, targetCol);
-        if (moveSuccess) {
-            playMoveAndEndGameAnimation(entityToMove, capturedEntity, startPosition, targetRow, targetCol);
-        }
-        deselectPiece();
-    }
+    private void playMoveAndEndGameAnimation(Entity e, Entity t, Point2D start, int r, int c) {
+        Point2D target = XiangQiApp.getVisualPosition(r, c);
+        e.setPosition(target);
 
-    private void playMoveAndEndGameAnimation(Entity entityToMove, Entity capturedEntity, Point2D startPos, int targetRow, int targetCol) {
-        Point2D targetPosition = XiangQiApp.getVisualPosition(targetRow, targetCol);
-        entityToMove.setPosition(targetPosition);
-        boolean willBeGameOver = model.isGameOver();
-        animationBuilder()
-                .duration(Duration.seconds(0.2))
-                .translate(entityToMove)
-                .from(startPos)
-                .to(targetPosition)
-                .buildAndPlay();
+        animationBuilder().duration(Duration.seconds(0.2)).translate(e).from(start).to(target).buildAndPlay();
+
         runOnce(() -> {
-            if (willBeGameOver) {
-                if (capturedEntity != null) capturedEntity.removeFromWorld();
-                showGameOverBanner();
-            } else {
-                if (capturedEntity != null) capturedEntity.removeFromWorld();
-                updateTurnIndicator();
-            }
+            if (t != null) t.removeFromWorld();
+            if (model.isGameOver()) showGameOverBanner();
+            updateTurnIndicator();
         }, Duration.seconds(0.25));
     }
 
     private void showGameOverBanner() {
         XiangQiApp app = getAppCast();
         Text banner = app.getGameOverBanner();
-        Rectangle dimmingRect = app.getGameOverDimmingRect();
         banner.setText(model.getWinner() + " 胜！");
         app.centerTextInApp(banner);
-        dimmingRect.setVisible(true);
-        runOnce(() -> {
-            banner.setScaleX(0);
-            banner.setScaleY(0);
-            banner.setVisible(true);
-            animationBuilder()
-                    .duration(Duration.seconds(0.5))
-                    .interpolator(Interpolators.EXPONENTIAL.EASE_OUT())
-                    .scale(banner)
-                    .to(new Point2D(1.0, 1.0))
-                    .buildAndPlay();
-        }, Duration.seconds(0.5));
+        app.getGameOverDimmingRect().setVisible(true);
+        banner.setVisible(true);
+        animationBuilder().duration(Duration.seconds(0.5)).scale(banner).from(new Point2D(0,0)).to(new Point2D(1,1)).buildAndPlay();
         updateTurnIndicator();
     }
 
-    public void updateTurnIndicator() {
-        XiangQiApp app = getAppCast();
-        var indicator = app.getTurnIndicator();
-        indicator.update(model.isRedTurn(), model.isGameOver());
-    }
-
-    public void surrender() {
-        if (model.isGameOver()) return;
-        model.endGame(model.isRedTurn() ? "黑方" : "红方");
-        showGameOverBanner();
-    }
-
-    private Entity findEntityAt(int row, int col) {
-        Point2D topLeft = XiangQiApp.getVisualPosition(row, col);
-        double pieceSize = CELL_SIZE - 8;
-        Rectangle2D selectionRect = new Rectangle2D(topLeft.getX(), topLeft.getY(), pieceSize, pieceSize);
-        return getGameWorld().getEntitiesInRange(selectionRect)
-                .stream()
-                .filter(e -> e.isType(EntityType.PIECE))
-                .findFirst()
-                .orElse(null);
-    }
-
-    public void undo() {
-        boolean undoSuccess = model.undoMove();
-        if (undoSuccess) {
-            XiangQiApp app = getAppCast();
-            app.spawnPiecesFromModel();
-            updateTurnIndicator();
-            deselectPiece();
-        }
-    }
-
-    private void clearMoveIndicators() {
-        getGameWorld().getEntitiesByType(EntityType.MOVE_INDICATOR).forEach(Entity::removeFromWorld);
-    }
-
-    private void showLegalMoves(AbstractPiece piece) {
-        clearMoveIndicators();
-        List<Point> moves = piece.getLegalMoves(model);
-        for (Point p : moves) {
-            if (model.tryMoveAndCheckSafe(piece, p.y, p.x)){
-                Point2D pos = XiangQiApp.getVisualPosition(p.y, p.x);
-                spawn("MoveIndicator", pos);
-            }
+    private AbstractPiece createPiece(String type, int r, int c, boolean red) {
+        switch (type) {
+            case "General": return new GeneralPiece(red?"帅":"将", r, c, red);
+            case "Advisor": return new AdvisorPiece(red?"仕":"士", r, c, red);
+            case "Elephant":return new ElephantPiece(red?"相":"象", r, c, red);
+            case "Horse":   return new HorsePiece("马", r, c, red);
+            case "Chariot": return new ChariotPiece("车", r, c, red);
+            case "Cannon":  return new CannonPiece("炮", r, c, red);
+            default:        return new SoldierPiece(red?"兵":"卒", r, c, red);
         }
     }
 }
