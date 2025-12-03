@@ -1,6 +1,5 @@
 package edu.sustech.xiangqi.controller;
 
-import com.almasb.fxgl.animation.Interpolators;
 import com.almasb.fxgl.dsl.FXGL;
 import com.almasb.fxgl.entity.Entity;
 import com.almasb.fxgl.time.TimerAction;
@@ -15,11 +14,13 @@ import javafx.application.Platform;
 import javafx.concurrent.Task;
 import javafx.geometry.Point2D;
 import javafx.geometry.Rectangle2D;
-import javafx.scene.shape.Rectangle;
+import javafx.scene.shape.Circle; // 【新增】导入圆形
 import javafx.scene.text.Text;
 import javafx.util.Duration;
+import javafx.scene.paint.Color;
 
 import java.awt.Point;
+import java.util.ArrayList;
 import java.util.List;
 
 import static com.almasb.fxgl.dsl.FXGL.*;
@@ -32,14 +33,16 @@ public class boardController {
     private final AIService aiService = new AIService();
     private NetworkClient netClient;
     private boolean isOnlineMode = false;
-
-    // 记录联机模式下自己的阵营
     private boolean amIRed = true;
-
     private TimerAction aiAutoStartTimer = null;
+    private List<Entity> highlightEntities = new ArrayList<>();
 
     public boardController(ChessBoardModel model) {
         this.model = model;
+    }
+
+    private XiangQiApp getApp() {
+        return (XiangQiApp) FXGL.getApp();
     }
 
     // =========================================================
@@ -51,7 +54,7 @@ public class boardController {
         netClient = new NetworkClient();
         netClient.setOnMessage(this::onNetworkMessage);
 
-        ((XiangQiApp) FXGL.getApp()).getInputHandler().setLocked(true);
+        getApp().getInputHandler().setLocked(true);
         getDialogService().showMessageBox("正在连接服务器 (房间 " + roomId + ")...");
 
         new Thread(() -> {
@@ -63,9 +66,6 @@ public class boardController {
         }).start();
     }
 
-    /**
-     * 处理服务器发来的所有消息
-     */
     private void onNetworkMessage(String msg) {
         Platform.runLater(() -> {
             System.out.println("[网络消息] " + msg);
@@ -82,6 +82,7 @@ public class boardController {
             }
             else if (msg.startsWith("MOVE")) {
                 String[] parts = msg.split(" ");
+                // MOVE r1 c1 r2 c2
                 int r1 = Integer.parseInt(parts[1]);
                 int c1 = Integer.parseInt(parts[2]);
                 int r2 = Integer.parseInt(parts[3]);
@@ -90,7 +91,7 @@ public class boardController {
                 AbstractPiece piece = model.getPieceAt(r1, c1);
                 if (piece != null) {
                     executeMove(piece, r2, c2, true);
-                    syncInputLock(); // 对方走完，轮到我解锁
+                    syncInputLock();
                 }
             }
             else if (msg.equals("SURRENDER")) {
@@ -140,15 +141,14 @@ public class boardController {
         });
     }
 
-    // --- 本地执行动作 (网络指令的接收端) ---
+    // --- 本地执行动作 ---
 
     private void syncInputLock() {
         if (!isOnlineMode) return;
-        // 如果当前回合是我的颜色，解锁；否则锁住
         if (model.isRedTurn() == amIRed) {
-            ((XiangQiApp) FXGL.getApp()).getInputHandler().setLocked(false);
+            getApp().getInputHandler().setLocked(false);
         } else {
-            ((XiangQiApp) FXGL.getApp()).getInputHandler().setLocked(true);
+            getApp().getInputHandler().setLocked(true);
         }
     }
 
@@ -160,12 +160,10 @@ public class boardController {
     }
 
     private void doRestart() {
-        // 【关键】联机模式不能销毁 Controller，必须软重置
         model.reset();
         refreshBoardView();
 
-        // 重置 UI 状态
-        XiangQiApp app = getAppCast();
+        XiangQiApp app = getApp();
         app.getGameOverDimmingRect().setVisible(false);
         app.getGameOverBanner().setVisible(false);
 
@@ -173,20 +171,25 @@ public class boardController {
     }
 
     private void doSwapAndRestart() {
-        amIRed = !amIRed; // 交换身份
+        amIRed = !amIRed;
         doRestart();
         String role = amIRed ? "红方 (先手)" : "黑方 (后手)";
         getDialogService().showMessageBox("身份已交换，现在你是：" + role);
     }
 
     private void refreshBoardView() {
-        XiangQiApp app = getAppCast();
+        XiangQiApp app = getApp();
         app.spawnPiecesFromModel();
         updateTurnIndicator();
+        app.updateHistoryPanel();
         deselectPiece();
+
+        // 清除高亮
+        for (Entity e : highlightEntities) e.removeFromWorld();
+        highlightEntities.clear();
     }
 
-    // --- 发送请求 (UI 按钮调用) ---
+    // --- UI 按钮调用 ---
 
     public void surrenderOnline() {
         if (!isOnlineMode) return;
@@ -202,15 +205,40 @@ public class boardController {
     public void restartOnline() { if (isOnlineMode) { netClient.sendRaw("RESTART_REQUEST"); getDialogService().showMessageBox("请求已发送..."); } }
     public void swapOnline() { if (isOnlineMode) { netClient.sendRaw("SWAP_REQUEST"); getDialogService().showMessageBox("请求已发送..."); } }
 
+    public void surrender() {
+        if (isOnlineMode) {
+            surrenderOnline();
+            return;
+        }
+        if (model.isGameOver()) return;
+        String winner = model.isRedTurn() ? "黑方" : "红方";
+        model.endGame(winner);
+        showGameOverBanner();
+    }
+
+    public void updateTurnIndicator() {
+        if (getApp().getTurnIndicator() != null)
+            getApp().getTurnIndicator().update(model.isRedTurn(), model.isGameOver());
+    }
+
+    public void undo() {
+        if (isOnlineMode) { undoOnline(); return; }
+        if (aiAutoStartTimer != null && !aiAutoStartTimer.isExpired()) { aiAutoStartTimer.expire(); aiAutoStartTimer = null; }
+        if (model.undoMove()) {
+            refreshBoardView();
+            if (!model.isRedTurn() && !model.isGameOver()) {
+                if(getApp().isAIEnabled()) aiAutoStartTimer = runOnce(this::startAITurn, Duration.seconds(1.0));
+            }
+        }
+    }
 
     // =========================================================
     //                 本地交互逻辑
     // =========================================================
 
     public void onGridClicked(int row, int col) {
-        XiangQiApp app = getAppCast();
-        if (app.isSettingUp()) {
-            handleSetupClick(row, col, app);
+        if (getApp().isSettingUp()) {
+            handleSetupClick(row, col, getApp());
             return;
         }
         if (model.isGameOver()) return;
@@ -231,8 +259,6 @@ public class boardController {
 
     private void handleSelection(Entity pieceEntity) {
         AbstractPiece logicPiece = pieceEntity.getComponent(PieceComponent.class).getPieceLogic();
-
-        // 联机模式下只能选自己的棋子
         if (isOnlineMode && logicPiece.isRed() != amIRed) return;
 
         if (logicPiece.isRed() == model.isRedTurn()) {
@@ -247,7 +273,6 @@ public class boardController {
         int r1 = pieceToMove.getRow();
         int c1 = pieceToMove.getCol();
 
-        // 统一执行移动
         boolean success = executeMove(pieceToMove, targetRow, targetCol, false);
 
         if (success) {
@@ -255,9 +280,7 @@ public class boardController {
                 netClient.sendMove(r1, c1, targetRow, targetCol);
                 syncInputLock();
             } else {
-                // 本地模式：检测是否启用 AI
-                XiangQiApp app = (XiangQiApp) FXGL.getApp();
-                // 只有当 AI 开启，且当前轮到黑方时，触发 AI
+                XiangQiApp app = getApp();
                 if (app.isAIEnabled() && !model.isRedTurn() && !model.isGameOver()) {
                     startAITurn();
                 }
@@ -266,10 +289,13 @@ public class boardController {
         deselectPiece();
     }
 
-    // 通用执行方法
     private boolean executeMove(AbstractPiece piece, int targetRow, int targetCol, boolean isRemote) {
         Entity pieceEntity = findEntityByLogic(piece);
         if (pieceEntity == null) return false;
+
+        // 注意：这里我们不再需要 startRow/Col 来绘制起点的方框了
+        // int startRow = piece.getRow();
+        // int startCol = piece.getCol();
 
         AbstractPiece targetLogic = model.getPieceAt(targetRow, targetCol);
         Entity targetEntity = findEntityByLogic(targetLogic);
@@ -279,6 +305,10 @@ public class boardController {
 
         if (success) {
             playMoveAndEndGameAnimation(pieceEntity, targetEntity, startPos, targetRow, targetCol);
+            getApp().updateHistoryPanel();
+
+            // 【修改】只高亮终点 (targetRow, targetCol)，使用黄色圆形
+            drawMoveHighlight(targetRow, targetCol, Color.YELLOW, 0);
         }
         return success;
     }
@@ -288,13 +318,11 @@ public class boardController {
     // =========================================================
 
     public void startAITurn() {
-        // 锁住 UI 防止人类干扰
-        ((XiangQiApp) FXGL.getApp()).getInputHandler().setLocked(true);
+        getApp().getInputHandler().setLocked(true);
 
         Task<AIService.MoveResult> aiTask = new Task<>() {
             @Override
             protected AIService.MoveResult call() throws Exception {
-                // 深度 4，假定 AI 执黑 (false)
                 return aiService.search(model, 4, false);
             }
         };
@@ -310,10 +338,10 @@ public class boardController {
                     }
                 }
             }
-            ((XiangQiApp) FXGL.getApp()).getInputHandler().setLocked(false);
+            getApp().getInputHandler().setLocked(false);
         });
 
-        aiTask.setOnFailed(e -> ((XiangQiApp) FXGL.getApp()).getInputHandler().setLocked(false));
+        aiTask.setOnFailed(e -> getApp().getInputHandler().setLocked(false));
         new Thread(aiTask).start();
     }
 
@@ -331,21 +359,60 @@ public class boardController {
         hintTask.setOnSucceeded(e -> {
             AIService.MoveResult res = hintTask.getValue();
             if (res != null && res.move != null) {
-                Point2D start = XiangQiApp.getVisualPosition(res.move.getStartRow(), res.move.getStartCol());
-                Point2D end = XiangQiApp.getVisualPosition(res.move.getEndRow(), res.move.getEndCol());
+                // int r1 = res.move.getStartRow();
+                // int c1 = res.move.getStartCol();
+                int r2 = res.move.getEndRow();
+                int c2 = res.move.getEndCol();
 
-                Entity h1 = spawn("MoveIndicator", start);
-                Entity h2 = spawn("MoveIndicator", end);
-                runOnce(() -> { h1.removeFromWorld(); h2.removeFromWorld(); }, Duration.seconds(3.0));
+                // 【修改】只高亮 AI 推荐的终点位置，使用 Cyan 色圆形，3秒消失
+                drawMoveHighlight(r2, c2, Color.CYAN, 3.0);
             }
         });
         new Thread(hintTask).start();
     }
 
     // =========================================================
-    //                 排局设置 & 辅助方法
+    //                 高亮 & 辅助
     // =========================================================
 
+    /**
+     * 【核心修改】只绘制目标位置的圆形高亮
+     */
+    private void drawMoveHighlight(int row, int col, Color color, double autoRemoveTime) {
+        // 1. 如果不是临时提示（即是走棋产生的高亮），先清除旧的
+        if (autoRemoveTime <= 0) {
+            for (Entity e : highlightEntities) e.removeFromWorld();
+            highlightEntities.clear();
+        }
+
+        // 2. 计算坐标 (获取棋子图片的左上角)
+        Point2D topLeft = XiangQiApp.getVisualPosition(row, col);
+
+        // 3. 计算圆形中心点
+        // 图片半径 pieceRadius = (90 - 8) / 2 = 41
+        // 圆心应该在 topLeft + 41, 41
+        double offset = (CELL_SIZE - 8) / 2.0;
+        Point2D center = topLeft.add(offset, offset);
+
+        // 4. 生成圆形实体
+        double radius = offset + 2; // 稍微小一点点，留个边
+        Entity circle = entityBuilder()
+                .at(center) // 实体位置在圆心 (对于 Circle View 来说)
+                // 注意：FXGL 的 view 如果是 Node，默认以 (0,0) 为左上角
+                // 但 Circle 的 (0,0) 是圆心。所以 entityBuilder.at(center) + view(circle) 是对的。
+                .view(new Circle(radius, color.deriveColor(0, 1, 1, 0.9))) // 50% 透明度
+                .zIndex(-1) // 放在棋子下面
+                .buildAndAttach();
+
+        // 5. 管理生命周期
+        if (autoRemoveTime > 0) {
+            runOnce(circle::removeFromWorld, Duration.seconds(autoRemoveTime));
+        } else {
+            highlightEntities.add(circle);
+        }
+    }
+
+    // ... (排局处理 handleSetupClick 保持不变) ...
     private void handleSetupClick(int row, int col, XiangQiApp app) {
         AbstractPiece existing = model.getPieceAt(row, col);
         String type = app.getSelectedPieceType();
@@ -357,7 +424,6 @@ public class boardController {
 
         if (type != null) {
             boolean isRed = app.isSelectedPieceRed();
-            // 点击同类棋子删除
             if (existing != null && existing.isRed() == isRed && existing.getClass().getSimpleName().startsWith(type)) {
                 model.getPieces().remove(existing);
                 app.spawnPiecesFromModel();
@@ -366,18 +432,14 @@ public class boardController {
 
             AbstractPiece newPiece = createPiece(type, row, col, isRed);
 
-            // 校验逻辑... (省略具体校验代码以节省空间，功能同上)
-            // 校验将帅唯一性
             if (newPiece instanceof GeneralPiece) {
                 if (!isValidPalace(newPiece)) { getDialogService().showMessageBox("必须在九宫格内"); return; }
                 AbstractPiece old = model.FindKing(isRed);
                 if (old != null) model.getPieces().remove(old);
             }
-            // 校验仕
             if (newPiece instanceof AdvisorPiece && !isValidAdvisorPosition(newPiece)) {
                 getDialogService().showMessageBox("仕位置不合法"); return;
             }
-            // 校验象
             if (newPiece instanceof ElephantPiece && !isValidElephantPosition(newPiece)) {
                 getDialogService().showMessageBox("象位置不合法"); return;
             }
@@ -411,55 +473,6 @@ public class boardController {
         } else {
             if (r > 4) return false;
             return (r == 0 || r == 4) ? (c == 2 || c == 6) : (r == 2 && (c == 0 || c == 4 || c == 8));
-        }
-    }
-
-    /**
-     * 【修复】本地/单机模式的投降 (之前报错的地方)
-     */
-    public void surrender() {
-        // 如果误触，当前是联机模式，转交联机处理
-        if (isOnlineMode) {
-            surrenderOnline();
-            return;
-        }
-
-        if (model.isGameOver()) return;
-
-        String winner = model.isRedTurn() ? "黑方" : "红方";
-        model.endGame(winner);
-        showGameOverBanner();
-    }
-
-    /**
-     * 【修复】本地悔棋
-     */
-    public void undo() {
-        if (isOnlineMode) { undoOnline(); return; }
-
-        if (aiAutoStartTimer != null && !aiAutoStartTimer.isExpired()) {
-            aiAutoStartTimer.expire(); aiAutoStartTimer = null;
-        }
-        if (model.undoMove()) {
-            refreshBoardView();
-            // 如果悔棋后轮到 AI，延迟触发
-            if (!model.isRedTurn() && !model.isGameOver()) {
-                XiangQiApp app = (XiangQiApp) FXGL.getApp();
-                if(app.isAIEnabled()) {
-                    aiAutoStartTimer = runOnce(this::startAITurn, Duration.seconds(1.0));
-                }
-            }
-        }
-    }
-
-    /**
-     * 【修复】更新界面回合指示器 (之前报错的地方)
-     */
-    public void updateTurnIndicator() {
-        XiangQiApp app = getAppCast();
-        var indicator = app.getTurnIndicator();
-        if (indicator != null) {
-            indicator.update(model.isRedTurn(), model.isGameOver());
         }
     }
 
@@ -508,7 +521,7 @@ public class boardController {
     }
 
     private void showGameOverBanner() {
-        XiangQiApp app = getAppCast();
+        XiangQiApp app = getApp();
         Text banner = app.getGameOverBanner();
         banner.setText(model.getWinner() + " 胜！");
         app.centerTextInApp(banner);

@@ -61,7 +61,7 @@ public class XiangQiApp extends GameApplication {
     private boolean isLoadedGame = false;
     private boolean isRestartingCustom = false;
     private boolean isOnlineLaunch = false;
-    private boolean isAIEnabled = false; // AI 开关
+    private boolean isAIEnabled = false;
 
     private ChessBoardModel customSetupSnapshot;
     private String selectedPieceType = null;
@@ -71,8 +71,9 @@ public class XiangQiApp extends GameApplication {
     private VBox leftSetupPanel;
     private VBox rightSetupPanel;
     private VBox standardGameUI;
-    private VBox leftGameUI; // 【新增】左侧标准 UI (AI面板)
+    private VBox leftGameUI; // AI 面板
     private VBox turnSelectionPanel;
+    private HistoryPanel historyPanel; // 历史记录面板
 
     private ChessBoardModel model;
     private boardController boardController;
@@ -99,6 +100,7 @@ public class XiangQiApp extends GameApplication {
     public String getCurrentUser() { return currentUser; }
     public boolean isGuest() { return isGuestMode; }
     public boolean isAIEnabled() { return isAIEnabled; }
+    public void setAIEnabled(boolean enabled) { this.isAIEnabled = enabled; }
 
     public void login(String username) { this.currentUser = username; this.isGuestMode = false; }
     public void loginAsGuest() { this.currentUser = "Guest"; this.isGuestMode = true; }
@@ -115,6 +117,13 @@ public class XiangQiApp extends GameApplication {
         double centerY = BOARD_START_Y + MARGIN + row * CELL_SIZE + PIECE_OFFSET_Y;
         double pieceRadius = (CELL_SIZE - 8) / 2.0;
         return new Point2D(centerX - pieceRadius, centerY - pieceRadius);
+    }
+
+    // 【关键修复】提供给 Controller 调用的方法
+    public void updateHistoryPanel() {
+        if (historyPanel != null && model != null) {
+            historyPanel.updateHistory(model.getMoveHistoryStack());
+        }
     }
 
     @Override
@@ -199,7 +208,7 @@ public class XiangQiApp extends GameApplication {
 
     @Override
     protected void initUI() {
-        // 清理旧 UI (特别是左侧)
+        // 清理 UI
         if (leftGameUI != null) removeUINode(leftGameUI);
 
         gameOverDimmingRect = new Rectangle(APP_WIDTH, APP_HEIGHT, Color.web("000", 0.0));
@@ -219,6 +228,7 @@ public class XiangQiApp extends GameApplication {
         if (isOnlineLaunch) {
             initOnlineGameUI();
         } else if (isCustomMode) {
+            // 【关键修复】直接调用本地方法，不依赖 Factory
             if (isSettingUp) initSetupUI();
             else initStandardGameUI();
         } else {
@@ -227,10 +237,10 @@ public class XiangQiApp extends GameApplication {
     }
 
     /**
-     * 【新增】标准模式 UI (含 AI 面板)
+     * 标准模式 UI (包含左侧 AI/棋谱)
      */
     private void initStandardGameUI() {
-        // 右侧
+        // 1. 右侧面板
         double rightX = BOARD_START_X + BOARD_WIDTH + UI_GAP - 20;
         var btnUndo = new PixelatedButton("悔棋", "Button1", () -> { if (boardController != null) boardController.undo(); });
         var btnSurrender = new PixelatedButton("投降", "Button1", () -> { if (boardController != null) boardController.surrender(); });
@@ -240,9 +250,8 @@ public class XiangQiApp extends GameApplication {
         standardGameUI = new VBox(10, btnUndo, btnSave, btnRestart, btnSurrender, btnHistory);
         addUINode(standardGameUI, rightX, 50);
 
-        // 左侧 (AI)
-        double leftX = BOARD_START_X - UI_GAP - UI_WIDTH;
-        double safeLeftX = Math.max(20, leftX);
+        // 2. 左侧面板 (AI + 棋谱)
+        double leftX = Math.max(20, BOARD_START_X - UI_GAP - UI_WIDTH);
 
         var btnToggleAI = new PixelatedButton("AI: 关闭", "Button1", null);
         btnToggleAI.setOnMouseClicked(e -> {
@@ -255,16 +264,31 @@ public class XiangQiApp extends GameApplication {
             if (boardController != null) boardController.requestAIHint();
         });
 
-        leftGameUI = new VBox(10, btnToggleAI, btnHint);
-        addUINode(leftGameUI, safeLeftX, 50);
+        // 棋谱按钮
+        var btnNotation = new PixelatedButton("棋 谱", "Button1", () -> {
+            if (historyPanel != null) {
+                historyPanel.setVisible(!historyPanel.isVisible());
+                if (historyPanel.isVisible()) updateHistoryPanel();
+            }
+        });
+
+        leftGameUI = new VBox(10, btnToggleAI, btnHint, btnNotation);
+        addUINode(leftGameUI, leftX, 50);
 
         turnIndicator = new TurnIndicator();
         turnIndicator.update(model.isRedTurn(), false);
         addUINode(turnIndicator, rightX, 750);
+
+        // 3. 棋谱面板初始化 (默认隐藏)
+        historyPanel = new HistoryPanel(220, 400);
+        historyPanel.setTranslateX(20);
+        historyPanel.setTranslateY(APP_HEIGHT / 2.0 - 200);
+        historyPanel.setVisible(false);
+        addUINode(historyPanel);
     }
 
     /**
-     * 【新增】联机模式 UI
+     * 联机模式 UI
      */
     private void initOnlineGameUI() {
         double uiX = BOARD_START_X + BOARD_WIDTH + UI_GAP - 20;
@@ -282,20 +306,18 @@ public class XiangQiApp extends GameApplication {
         addUINode(turnIndicator, uiX, 750);
     }
 
+    // 重启逻辑
     private void handleRestartGame() {
         getDialogService().showConfirmationBox("确定要重新开始吗？", yes -> {
             if (yes) {
-                if (isCustomMode && customSetupSnapshot != null) {
-                    isRestartingCustom = true;
-                    getGameController().startNewGame();
-                } else {
-                    isCustomMode = false; isLoadedGame = false;
-                    getGameController().startNewGame();
-                }
+                if (isCustomMode && customSetupSnapshot != null) isRestartingCustom = true;
+                else { isCustomMode = false; isLoadedGame = false; }
+                getGameController().startNewGame();
             }
         });
     }
 
+    // 排局 UI (内联实现)
     private void initSetupUI() {
         double leftX = Math.max(20, BOARD_START_X - UI_GAP - UI_WIDTH);
         leftSetupPanel = createPiecePalette(true);
@@ -305,108 +327,75 @@ public class XiangQiApp extends GameApplication {
         rightSetupPanel = createPiecePalette(false);
         rightSetupPanel.setTranslateX(rightX); rightSetupPanel.setTranslateY(50);
 
-        // 橡皮擦
         PixelatedButton btnEraser = new PixelatedButton("橡皮擦", "Button1", () -> {
-            resetPaletteStyles();
-            this.selectedPieceType = "Eraser"; this.selectedPieceIsRed = false;
+            resetPaletteStyles(); selectedPieceType = "Eraser"; selectedPieceIsRed = false;
             getDialogService().showMessageBox("橡皮擦模式：点击棋子删除");
         });
-        btnEraser.setScaleX(0.9); btnEraser.setScaleY(0.9);
+        btnEraser.setScaleX(0.7); btnEraser.setScaleY(0.7);
 
         // 先手选择
-        ToggleGroup turnGroup = new ToggleGroup();
-        ToggleButton rbRedFirst = createStyledToggleButton("红先", true);
-        ToggleButton rbBlackFirst = createStyledToggleButton("黑先", false);
-        rbRedFirst.setToggleGroup(turnGroup); rbBlackFirst.setToggleGroup(turnGroup); rbRedFirst.setSelected(true);
-
-        Label turnLabel = new Label("先手选择");
-        turnLabel.setFont(gameFont); turnLabel.setTextFill(Color.WHITE);
-
-        // 保存排局
-        PixelatedButton btnSaveSetup = new PixelatedButton("保存排局", "Button1", this::openSaveDialog);
-        btnSaveSetup.setScaleX(0.9); btnSaveSetup.setScaleY(0.9);
-
-        turnSelectionPanel = new VBox(10, btnSaveSetup, btnEraser, turnLabel, rbRedFirst, rbBlackFirst);
-        turnSelectionPanel.setAlignment(Pos.CENTER_LEFT);
-        turnSelectionPanel.setTranslateX(leftX);
-        turnSelectionPanel.setTranslateY(APP_HEIGHT - 350); // 上移一点
-
-        // 开始按钮
-        PixelatedButton btnStartCustom = new PixelatedButton("开始对局", "Button1", () -> {
-            boolean isRedFirst = rbRedFirst.isSelected();
-            tryStartCustomGame(isRedFirst);
+        setupRedFirst = true;
+        PixelatedButton btnToggleTurn = new PixelatedButton("先手: 红方", "Button1", null);
+        btnToggleTurn.setTextColor(Color.RED);
+        btnToggleTurn.setScaleX(0.7); btnToggleTurn.setScaleY(0.7);
+        btnToggleTurn.setOnMouseClicked(e -> {
+            setupRedFirst = !setupRedFirst;
+            if(setupRedFirst) { btnToggleTurn.setText("先手: 红方"); btnToggleTurn.setTextColor(Color.RED); }
+            else { btnToggleTurn.setText("先手: 黑方"); btnToggleTurn.setTextColor(Color.BLACK); }
+            FXGL.play("按钮音效1.mp3");
         });
 
-        Label hintLabel = new Label("提示：\n左红右黑\n点击放置");
-        hintLabel.setFont(gameFont); hintLabel.setTextFill(Color.WHITE);
+        Label turnLabel = new Label("先手选择"); turnLabel.setFont(gameFont); turnLabel.setTextFill(Color.WHITE);
+
+        PixelatedButton btnSaveSetup = new PixelatedButton("保存排局", "Button1", this::openSaveDialog);
+        btnSaveSetup.setScaleX(0.7); btnSaveSetup.setScaleY(0.7);
+
+        turnSelectionPanel = new VBox(-15, btnSaveSetup, btnEraser, btnToggleTurn);
+        turnSelectionPanel.setAlignment(Pos.CENTER_LEFT);
+        turnSelectionPanel.setTranslateX(leftX); turnSelectionPanel.setTranslateY(APP_HEIGHT - 350);
+
+        PixelatedButton btnStartCustom = new PixelatedButton("开始对局", "Button1", () -> tryStartCustomGame(setupRedFirst));
+        Label hintLabel = new Label("提示：\n左红右黑\n点击放置"); hintLabel.setFont(gameFont); hintLabel.setTextFill(Color.WHITE);
+        btnStartCustom.setScaleX(0.9); btnStartCustom.setScaleY(0.9);
 
         VBox controlBox = new VBox(15, hintLabel, btnStartCustom);
-        controlBox.setAlignment(Pos.CENTER);
-        controlBox.setStyle("-fx-padding: 30 0 0 0;");
+        controlBox.setAlignment(Pos.CENTER); controlBox.setStyle("-fx-padding: 30 0 0 0;");
         rightSetupPanel.getChildren().add(controlBox);
 
         addUINode(leftSetupPanel); addUINode(rightSetupPanel); addUINode(turnSelectionPanel);
     }
 
-    private void tryStartCustomGame(boolean isRedFirst) {
-        // 飞将校验
-        AbstractPiece redKing = model.FindKing(true);
-        AbstractPiece blackKing = model.FindKing(false);
-        if (redKing == null || blackKing == null) {
-            getDialogService().showMessageBox("红黑双方必须各有一将！"); return;
-        }
-        if (redKing.getCol() == blackKing.getCol()) {
-            boolean blocked = false;
-            for(int r = Math.min(redKing.getRow(), blackKing.getRow()) + 1; r < Math.max(redKing.getRow(), blackKing.getRow()); r++) {
-                if (model.getPieceAt(r, redKing.getCol()) != null) { blocked = true; break; }
-            }
-            if (!blocked) { getDialogService().showMessageBox("将帅不能照面（飞将）！"); return; }
-        }
+    private boolean setupRedFirst = true;
 
-        this.customSetupSnapshot = deepCopy(model);
+    // 【修复】将此方法设为 public，防止其他地方调用报错
+    public void tryStartCustomGame(boolean isRedFirst) {
+        AbstractPiece rK = model.FindKing(true), bK = model.FindKing(false);
+        if (rK == null || bK == null) { getDialogService().showMessageBox("必须各有一将！"); return; }
+        if (rK.getCol() == bK.getCol()) {
+            boolean block = false;
+            for (int r=Math.min(rK.getRow(),bK.getRow())+1; r<Math.max(rK.getRow(),bK.getRow()); r++)
+                if (model.getPieceAt(r, rK.getCol())!=null) { block=true; break; }
+            if(!block) { getDialogService().showMessageBox("将帅不能照面（飞将）！"); return; }
+        }
+        customSetupSnapshot = deepCopy(model);
         removeUINode(leftSetupPanel); removeUINode(rightSetupPanel); removeUINode(turnSelectionPanel);
-
-        model.setRedTurn(isRedFirst);
-        this.isSettingUp = false;
-        this.selectedPieceType = null;
-
-        initStandardGameUI();
-        turnIndicator.update(isRedFirst, false);
-
-        getDialogService().showMessageBox("排局开始！", () -> {
-            if (!isRedFirst && isAIEnabled && boardController != null) {
-                boardController.startAITurn();
-            }
-        });
+        model.setRedTurn(isRedFirst); isSettingUp = false; selectedPieceType = null;
+        initStandardGameUI(); turnIndicator.update(isRedFirst, false);
+        if (!isRedFirst && isAIEnabled && boardController!=null) boardController.startAITurn();
     }
 
-    // --- 辅助方法 ---
-    private ToggleButton createStyledToggleButton(String text, boolean isRed) {
-        ToggleButton tb = new ToggleButton(text);
-        tb.setFont(gameFont); tb.setPrefWidth(UI_WIDTH * 0.8);
-        String base = "#D2B48C"; String sel = isRed ? "#FF6666" : "#666666";
-        String style = "-fx-background-radius: 0; -fx-border-color: #5C3A1A; -fx-border-width: 2px; -fx-text-fill: black;";
-        tb.setStyle("-fx-base: " + base + ";" + style);
-        tb.selectedProperty().addListener((o, old, val) -> tb.setStyle("-fx-base: " + (val ? sel : base) + ";" + style));
-        return tb;
-    }
-
-    private VBox createPiecePalette(boolean isRed) {
+    private VBox createPiecePalette(boolean red) {
         VBox box = new VBox(10); box.setAlignment(Pos.TOP_CENTER); box.setPrefWidth(UI_WIDTH);
-        Label title = new Label(isRed?"红方":"黑方"); title.setFont(gameFont); title.setTextFill(isRed?Color.RED:Color.BLACK);
-        box.getChildren().add(title);
-        String[] types = {"General", "Advisor", "Elephant", "Horse", "Chariot", "Cannon", "Soldier"};
-        for (String type : types) {
-            String prefix = isRed ? "Red" : "Black";
+        Label t = new Label(red?"红方":"黑方"); t.setFont(gameFont); t.setTextFill(red?Color.RED:Color.BLACK); box.getChildren().add(t);
+        String[] types = {"General","Advisor","Elephant","Horse","Chariot","Cannon","Soldier"};
+        for(String type : types) {
+            String prefix = red ? "Red" : "Black";
             ImageView img = new ImageView(FXGL.getAssetLoader().loadTexture(prefix + type + ".png").getImage());
             img.setFitWidth(55); img.setPreserveRatio(true);
-            Button btn = new Button("", img);
-            btn.setStyle("-fx-background-color: transparent;");
-            btn.setOnAction(e -> {
-                resetPaletteStyles();
-                btn.setStyle("-fx-background-color: rgba(255,255,0,0.3);");
-                this.selectedPieceType = type; this.selectedPieceIsRed = isRed;
-                FXGL.play("按钮音效1.mp3");
+            Button btn = new Button("", img); btn.setStyle("-fx-background-color: transparent;");
+            btn.setOnAction(e->{
+                resetPaletteStyles(); btn.setStyle("-fx-background-color: rgba(255,255,0,0.3);");
+                selectedPieceType=type; selectedPieceIsRed=red; FXGL.play("按钮音效1.mp3");
             });
             box.getChildren().add(btn);
         }

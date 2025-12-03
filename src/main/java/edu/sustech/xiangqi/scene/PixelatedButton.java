@@ -82,4 +82,13 @@ public class PixelatedButton extends StackPane {
             }
         });
     }
+    // 【新增】动态修改文字内容
+    public void setText(String content) {
+        this.text.setText(content);
+    }
+
+    // 【新增】动态修改文字颜色
+    public void setTextColor(Color color) {
+        this.text.setFill(color);
+    }
 }

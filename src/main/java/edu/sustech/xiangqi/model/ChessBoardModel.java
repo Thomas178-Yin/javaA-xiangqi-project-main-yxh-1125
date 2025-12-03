@@ -36,6 +36,9 @@ public class ChessBoardModel implements Serializable{
     public String getWinner() {
         return winner;
     }
+    public java.util.Stack<MoveCommand> getMoveHistoryStack() {
+        return moveHistory;
+    }
 
     public boolean isRedTurn() {
         return isRedTurn;
@@ -378,7 +381,9 @@ public class ChessBoardModel implements Serializable{
 
     // --- 【新增】困毙检测：检查某一方是否还有任何合法且安全的走法 ---
     public boolean hasAnyLegalMove(boolean checkRed) {
-        for (AbstractPiece piece : pieces) {
+        List<AbstractPiece> snapshot = new ArrayList<>(pieces);
+
+        for (AbstractPiece piece : snapshot) {
             // 只检查己方棋子
             if (piece.isRed() == checkRed) {
                 List<java.awt.Point> moves = piece.getLegalMoves(this);
@@ -494,17 +499,18 @@ public class ChessBoardModel implements Serializable{
     public List<MoveCommand> getAllLegalMoves(boolean isRed) {
         List<MoveCommand> moves = new ArrayList<>();
 
-        for (AbstractPiece piece : pieces) {
-            // 只处理指定阵营的棋子
-            if (piece.isRed() == isRed) {
-                // 获取该棋子所有落点
-                List<Point> legalPoints = piece.getLegalMoves(this);
+        // 【修复】同样使用副本遍历，防止并发修改异常
+        List<AbstractPiece> snapshot = new ArrayList<>(pieces);
 
-                for (Point p : legalPoints) {
-                    int targetRow = p.y;
-                    int targetCol = p.x;
-                    AbstractPiece targetPiece = getPieceAt(targetRow, targetCol);
-                    moves.add(new MoveCommand(piece, targetRow, targetCol, targetPiece));
+        for (AbstractPiece p : snapshot) {
+            if (p.isRed() == isRed) {
+                List<Point> points = p.getLegalMoves(this);
+                for (Point pt : points) {
+                    // 过滤送将步
+                    if (tryMoveAndCheckSafe(p, pt.y, pt.x)) {
+                        AbstractPiece target = getPieceAt(pt.y, pt.x);
+                        moves.add(new MoveCommand(p, pt.y, pt.x, target));
+                    }
                 }
             }
         }

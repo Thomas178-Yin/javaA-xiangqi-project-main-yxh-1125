@@ -24,94 +24,63 @@ public class InGameMenuScene extends FXGLMenu {
     public InGameMenuScene() {
         super(MenuType.GAME_MENU);
 
-        historyListView = new ListView<>();
-        historyListView.setPrefHeight(getAppHeight() - 300);
-        historyListView.setPrefWidth(300);
-
-        // --- 2. 【关键修复】强制设置 ListView 的整体样式 ---
-        // -fx-control-inner-background: 设置列表内容的背景色为白色
-        // -fx-background-color: 设置控件本身的背景色
-        historyListView.setStyle(
-                "-fx-control-inner-background: white;" +
-                        "-fx-background-color: white;" +
-                        "-fx-padding: 10;" // 给整个列表加一点内边距
-        );
-
-        // --- 3.自定义单元格渲染 (CellFactory) ---
-        historyListView.setCellFactory(lv -> new ListCell<String>() {
-            @Override
-            protected void updateItem(String item, boolean empty) {
-                super.updateItem(item, empty);
-
-                if (empty || item == null) {
-                    setText(null);
-                    setGraphic(null);
-                    // 空行：背景透明或白色
-                    setStyle("-fx-background-color: white;");
-                } else {
-                    setText(item);
-                    // 设置字体
-                    setFont(FXGL.getAssetLoader().loadFont("HYPixel11pxU-2.ttf").newFont(18));
-
-                    // 【核心】强制文字颜色为黑色，去掉默认的 Padding
-                    // -fx-text-fill: black; 强制文字变黑
-                    // -fx-background-color: transparent; 让选中时的蓝色背景能显示出来，或者强制设为白色
-                    setStyle("-fx-text-fill: brown; -fx-alignment: CENTER-LEFT; -fx-padding: 5;");
-                }
-            }
-        });
-
-
-
-        // 1. 创建一个半透明的背景遮罩
+        // 1. 半透明黑色背景遮罩
         var bg = new Rectangle(getAppWidth(), getAppHeight(), Color.web("000", 0.7));
 
-        // 2. 创建历史记录面板
-        var title = new Text("菜单/历史记录");
+        // 2. 标题
+        var title = new Text("游戏暂停");
         title.setFill(Color.WHITE);
-        // ... (设置字体)
+        try {
+            title.setFont(FXGL.getAssetLoader().loadFont("HYPixel11pxU-2.ttf").newFont(50));
+        } catch (Exception e) {
+            title.setFont(javafx.scene.text.Font.font(50));
+        }
 
-        historyListView.setPrefHeight(getAppHeight() - 200);
+        // 3. 按钮组 (使用统一的像素风格按钮)
 
+        // [返回游戏]
+        var btnResume = new PixelatedButton("返回游戏", "Button1", this::fireResume);
 
+        // [保存游戏] - 调用 App 的保存弹窗
+        var btnSave = new PixelatedButton("保存游戏", "Button1", () -> {
+            XiangQiApp app = (XiangQiApp) FXGL.getApp();
+            app.openSaveDialog();
+        });
 
-        // 3. 创建其他菜单按钮
-        var btnResume = getUIFactoryService().newButton("返回游戏");
-        btnResume.setOnAction(e -> fireResume()); // fireResume() 是关闭游戏菜单的内置方法
+        // [退出到主菜单]
+        var btnExit = new PixelatedButton("退出到主菜单", "Button1", this::fireExitToMainMenu);
 
-        var btnExit = getUIFactoryService().newButton("退出到主菜单");
-        btnExit.setOnAction(e -> fireExitToMainMenu()); // fireExitToMainMenu() 是内置方法
-
-        // 4. 布局
-        var historyBox = new VBox(10, title, historyListView);
-        var menuBox = new VBox(15, historyBox, btnResume, btnExit);
+        // 4. 布局容器
+        var menuBox = new VBox(20, title, btnResume, btnSave, btnExit);
         menuBox.setAlignment(Pos.CENTER);
 
-        menuBox.setTranslateX(getAppWidth() / 2.0 - 150); // 居中
-        menuBox.setTranslateY(50); // 顶部对齐
+        // 居中显示
+        menuBox.setTranslateX(getAppWidth() / 2.0 - 100); // 稍微修正X轴，因为按钮有宽度
+        menuBox.setTranslateY(getAppHeight() / 2.0 - 150);
 
         // 5. 添加到场景
         getContentRoot().getChildren().addAll(bg, menuBox);
     }
 
-    @Override
-    protected void onUpdate(double tpf) {
-        super.onUpdate(tpf);
-
-        XiangQiApp app = (XiangQiApp) FXGL.getApp();
-
-        // 1. 检查 Model 是否已经初始化
-        if (app.getModel() != null) {
-
-            // 2. 检查 ListView 当前显示的数据，是否就是 Model 里的那份数据
-            // 如果不是（比如刚启动，或者开启了新的一局游戏 Model 换了），就重新绑定
-            if (historyListView.getItems() != app.getModel().getMoveHistoryAsObservableList()) {
-
-                historyListView.setItems(app.getModel().getMoveHistoryAsObservableList());
-                System.out.println("历史记录已同步！当前步数：" + historyListView.getItems().size());
-            }
-        }
-    }
+//
+//    @Override
+//    protected void onUpdate(double tpf) {
+//        super.onUpdate(tpf);
+//
+//        XiangQiApp app = (XiangQiApp) FXGL.getApp();
+//
+//        // 1. 检查 Model 是否已经初始化
+//        if (app.getModel() != null) {
+//
+//            // 2. 检查 ListView 当前显示的数据，是否就是 Model 里的那份数据
+//            // 如果不是（比如刚启动，或者开启了新的一局游戏 Model 换了），就重新绑定
+//            if (historyListView.getItems() != app.getModel().getMoveHistoryAsObservableList()) {
+//
+//                historyListView.setItems(app.getModel().getMoveHistoryAsObservableList());
+//                System.out.println("历史记录已同步！当前步数：" + historyListView.getItems().size());
+//            }
+//        }
+//    }
 
 
 }
