@@ -6,7 +6,7 @@ import java.net.Socket;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class XiangQiServer {
-    private static final int PORT = 8888;
+    private static final int PORT = 9999;
 
     // 【核心】房间映射表：房间号 -> 等待中的玩家
     // 如果房间里还没人，这就存第一个人。
