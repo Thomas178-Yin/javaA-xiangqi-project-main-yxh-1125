@@ -372,6 +372,7 @@ public class ChessBoardModel implements Serializable{
 
         // 跑遍了所有棋子的所有走法，都解不了将 -> 绝杀
         return true;
+
     }
 
     public AbstractPiece FindKing(boolean isKingRed){
