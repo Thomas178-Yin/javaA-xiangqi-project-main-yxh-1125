@@ -322,24 +322,55 @@ public class ChessBoardModel implements Serializable{
                 }
             }
         }
-        for (AbstractPiece piece : getPieces()) {
-            if (piece.isRed() ==  isPlayerRed ){
-                List<Point> legalMoves = piece.getLegalMoves(this);
-                for (Point Move : legalMoves) {
-                    int OriginalRow = piece.getRow();
-                    int OriginalCol = piece.getCol();
-                    int TargetRow = Move.y;
-                    int TargetCol = Move.x;
+        List<AbstractPiece> tempPieces = new ArrayList<>(this.pieces);
 
-                    piece.moveTo(TargetRow, TargetCol);
+        for (AbstractPiece piece : tempPieces) {
+            // 只检查己方的棋子
+            if (piece.isRed() == isPlayerRed) {
+
+                List<Point> legalMoves = piece.getLegalMoves(this);
+
+                for (Point move : legalMoves) {
+                    int originalRow = piece.getRow();
+                    int originalCol = piece.getCol();
+                    int targetRow = move.y;
+                    int targetCol = move.x;
+
+                    // --- 【修复开始】 ---
+
+                    // 1. 获取目标位置的棋子 (潜在的被吃者)
+                    AbstractPiece targetPiece = getPieceAt(targetRow, targetCol);
+
+                    // 2. 模拟吃子：如果目标有子，先从逻辑列表里删掉！
+                    if (targetPiece != null) {
+                        pieces.remove(targetPiece);
+                    }
+
+                    // 3. 模拟移动
+                    piece.moveTo(targetRow, targetCol);
+
+                    // 4. 检查是否解除了将军
                     boolean stillInCheck = isGeneraInCheck(isPlayerRed);
-                    piece.moveTo(OriginalRow, OriginalCol);
+
+                    // 5. 【回溯】恢复移动
+                    piece.moveTo(originalRow, originalCol);
+
+                    // 6. 【回溯】复活被吃的子
+                    if (targetPiece != null) {
+                        pieces.add(targetPiece);
+                    }
+
+                    // --- 【修复结束】 ---
+
+                    // 只要找到一步能解围的棋，就不是死局
                     if (!stillInCheck) {
                         return false;
                     }
                 }
             }
         }
+
+        // 跑遍了所有棋子的所有走法，都解不了将 -> 绝杀
         return true;
     }
 
