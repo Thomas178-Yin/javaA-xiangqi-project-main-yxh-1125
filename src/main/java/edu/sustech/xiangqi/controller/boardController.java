@@ -235,10 +235,13 @@ public class boardController {
         }
         if (model.undoMove()) {
             refreshBoardView();
+            getApp().getInputHandler().setLocked(false);
             // 悔棋后如果是 AI 回合，延迟触发 AI
             if (!model.isRedTurn() && !model.isGameOver()) {
                 if(getApp().isAIEnabled()) {
+                    getApp().getInputHandler().setLocked(true);
                     aiAutoStartTimer = runOnce(() -> startAITurn(getApp().getAIDifficulty()), Duration.seconds(1.0));
+
                 }
             }
         }
