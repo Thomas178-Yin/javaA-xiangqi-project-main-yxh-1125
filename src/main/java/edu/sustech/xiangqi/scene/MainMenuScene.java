@@ -10,7 +10,9 @@ import javafx.animation.FadeTransition;
 import javafx.animation.ParallelTransition;
 import javafx.animation.PauseTransition;
 import javafx.animation.TranslateTransition;
+import javafx.geometry.HPos;
 import javafx.geometry.Pos;
+import javafx.geometry.VPos;
 import javafx.scene.Node;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
@@ -24,9 +26,8 @@ import javafx.scene.shape.Rectangle;
 import javafx.scene.text.Text;
 import javafx.util.Duration;
 
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
+import java.io.File;
+import java.util.*;
 
 public class MainMenuScene extends FXGLMenu {
 
@@ -54,6 +55,13 @@ public class MainMenuScene extends FXGLMenu {
     private static final Color GRID_COLOR = Color.web("#ffffff", 0.03); // 极淡的网格线
     private static final Color TEXT_COLOR = Color.web("#f0e6d2");
     private static final Color ERROR_COLOR = Color.web("#ff5555");
+
+    private VBox endgameView; // 【新增】残局选择界面
+    private GridPane endgameGrid; // 【新增】用于放按钮的网格
+    private int currentPage = 0;
+    private static final int ITEMS_PER_PAGE = 16;
+    private List<File> allEndgameFiles = new ArrayList<>();
+    private Label pageLabel; // 显示 "第 1 / 3 页"
 
     // 输入框样式
     private static final String INPUT_STYLE =
@@ -91,7 +99,7 @@ public class MainMenuScene extends FXGLMenu {
 
         // 4. 内容容器
         contentBox = new VBox(20);
-        contentBox.setAlignment(Pos.CENTER);
+        contentBox.setAlignment(Pos.TOP_CENTER);
 
         // 初始化视图
         initLoginSelectionView();
@@ -101,11 +109,31 @@ public class MainMenuScene extends FXGLMenu {
 
         // 布局
         VBox layout = new VBox(40, titleBox, contentBox);
-        layout.setAlignment(Pos.CENTER);
-        layout.setTranslateX(getAppWidth() / 2.0 - 150); // 居中修正
-        layout.setTranslateY(getAppHeight() / 2.0 - 280);
+        layout.setAlignment(Pos.TOP_CENTER);
 
-        getContentRoot().getChildren().add(layout);
+//        // 120 这个数值你可以微调，越小标题越靠上
+//        layout.setTranslateY(120);
+//        layout.setTranslateX(getAppWidth() / 2.0 - 150);
+//
+//        getContentRoot().getChildren().add(layout);
+        // 1. 创建一个占满全屏的 StackPane
+        StackPane rootWrapper = new StackPane();
+        rootWrapper.setPrefSize(getAppWidth(), getAppHeight());
+
+        // 2. 设置对齐方式为：顶部居中
+        rootWrapper.setAlignment(Pos.TOP_CENTER);
+
+        // 3. 把 layout 放进去
+        rootWrapper.getChildren().add(layout);
+
+        // 4. 利用 Padding 来控制标题距离顶部的距离 (替代 setTranslateY)
+        // 这里的 120 就是之前的 "setTranslateY(120)"，现在作为内边距
+        rootWrapper.setPadding(new javafx.geometry.Insets(120, 0, 0, 0));
+
+        // --- 【核心修改结束】 ---
+
+        // 注意：这里添加的是 rootWrapper，不再是 layout
+        getContentRoot().getChildren().add(rootWrapper);
 
         // 默认显示
         switchView(loginSelectionView);
@@ -288,6 +316,8 @@ public class MainMenuScene extends FXGLMenu {
     }
 
     private void initMainMenuView() {
+        double scale = 0.8;
+
         var btnNew = new PixelatedButton("标准对战", "Button1", () -> {
             XiangQiApp app = (XiangQiApp) FXGL.getApp();
             app.setCustomMode(false);
@@ -295,6 +325,7 @@ public class MainMenuScene extends FXGLMenu {
             app.setOnlineLaunch(false);
             fireNewGame();
         });
+        btnNew.setScaleX(scale); btnNew.setScaleY(scale);
 
         var btnCustom = new PixelatedButton("排局模式", "Button1", () -> {
             XiangQiApp app = (XiangQiApp) FXGL.getApp();
@@ -303,12 +334,27 @@ public class MainMenuScene extends FXGLMenu {
             app.setOnlineLaunch(false);
             fireNewGame();
         });
+        btnCustom.setScaleX(scale); btnCustom.setScaleY(scale);
+
+        //////////////////////////////
+        var btnEndgame = new PixelatedButton("残局定式", "Button1", () -> {
+            refreshEndgameList(); // 每次点击都刷新一下文件列表
+            switchView(endgameView);
+        });
+        btnEndgame.setScaleX(scale); btnEndgame.setScaleY(scale);
+
+        var btnChallenge = new PixelatedButton("残局定式", "Button1", () -> {
+            initEndgameView(); // 初始化或刷新
+            switchView(endgameView);
+        });
+        btnChallenge.setScaleX(scale); btnChallenge.setScaleY(scale);
 
         var btnLoad = new PixelatedButton("读取存档", "Button1", () -> {
             XiangQiApp app = (XiangQiApp) FXGL.getApp();
             app.setOnlineLaunch(false);
             app.openLoadDialog();
         });
+        btnLoad.setScaleX(scale); btnLoad.setScaleY(scale);
 
         var btnNet = new PixelatedButton("联网对战", "Button1", () -> {
             XiangQiApp app = (XiangQiApp) FXGL.getApp();
@@ -318,6 +364,7 @@ public class MainMenuScene extends FXGLMenu {
             }
             switchView(onlineLobbyView);
         });
+        btnNet.setScaleX(scale); btnNet.setScaleY(scale);
 
         var btnLogout = new PixelatedButton("注销登录", "Button1", () -> {
             XiangQiApp app = (XiangQiApp) FXGL.getApp();
@@ -325,9 +372,168 @@ public class MainMenuScene extends FXGLMenu {
             app.loginAsGuest();
             switchView(loginSelectionView);
         });
+        btnLogout.setScaleX(scale); btnLogout.setScaleY(scale);
 
-        mainMenuView = new VBox(12, btnNew, btnCustom, btnLoad, btnNet, btnLogout);
+        mainMenuView = new VBox(-18, btnNew, btnCustom, btnChallenge, btnLoad, btnNet, btnLogout);
         mainMenuView.setAlignment(Pos.CENTER);
+    }
+
+    private void initEndgameView() {
+        if (endgameView != null) {
+            refreshEndgameList();
+            return;
+        }
+
+        Label title = new Label("残 局 挑 战");
+        title.setTextFill(TEXT_COLOR);
+        try { title.setFont(FXGL.getAssetLoader().loadFont("HYPixel11pxU-2.ttf").newFont(36)); } catch(Exception e){}
+
+        // --- 【核心修改开始】 ---
+        endgameGrid = new GridPane();
+        endgameGrid.setAlignment(Pos.CENTER);
+        endgameGrid.setHgap(15);
+        endgameGrid.setVgap(15);
+
+        // 1. 锁死整个网格的大小 (4列 x 120px + 间隙 ≈ 550px)
+        // 这样无论里面有几个按钮，网格本身永远占据这么大的空间
+        endgameGrid.setPrefSize(550, 240);
+        endgameGrid.setMaxSize(550, 240);
+        endgameGrid.setMinSize(550, 240);
+
+        // 2. 锁死列宽 (4列，每列 25%)
+        // 这样即使第一行只有一个按钮，它也会老老实实待在第一个格子里，不会居中跑到中间去
+        for (int i = 0; i < 4; i++) {
+            ColumnConstraints col = new ColumnConstraints();
+            col.setPercentWidth(25); // 每列占 25% 宽度
+            col.setHalignment(HPos.CENTER); // 按钮在格子里居中
+            endgameGrid.getColumnConstraints().add(col);
+        }
+
+        // 3. 锁死行高 (4行，每行 25%)
+        for (int i = 0; i < 4; i++) {
+            RowConstraints row = new RowConstraints();
+            row.setPercentHeight(25); // 每行占 25% 高度
+            row.setValignment(VPos.CENTER);
+            endgameGrid.getRowConstraints().add(row);
+        }
+        // --- 【核心修改结束】 ---
+
+
+        var btnPrev = new PixelatedButton("上一页", "Button1", this::prevPage);
+        btnPrev.setScaleX(0.7); btnPrev.setScaleY(0.7);
+
+        var btnNext = new PixelatedButton("下一页", "Button1", this::nextPage);
+        btnNext.setScaleX(0.7); btnNext.setScaleY(0.7);
+
+        pageLabel = new Label("1 / 1");
+        pageLabel.setTextFill(Color.WHITE);
+        pageLabel.setStyle("-fx-font-size: 16px;");
+
+        HBox navBox = new HBox(20, btnPrev, pageLabel, btnNext);
+        navBox.setAlignment(Pos.CENTER);
+
+        var btnBack = new PixelatedButton("返回主菜单", "Button1", () -> switchView(mainMenuView));
+        btnBack.setScaleX(0.9); btnBack.setScaleY(0.9);
+
+        endgameView = new VBox(20, title, endgameGrid, navBox, btnBack);
+        endgameView.setAlignment(Pos.CENTER);
+
+        // 【关键修复：位置修正】
+        // 因为主菜单整体布局左移了 150px (layout.setTranslateX(Width/2 - 150))
+        // 而残局界面比较宽，视觉上会显得偏右。
+        // 这里我们给 endgameView 单独做一个反向偏移，把它“拉”回来。
+        // 如果觉得还不够居中，请调整这个 100 的数值。
+//        endgameView.setTranslateX(-100);
+
+        refreshEndgameList();
+    }
+
+    // --- 【新增】数据加载与分页逻辑 ---
+
+    private void refreshEndgameList() {
+        // 1. 扫描 saves 目录
+        File dir = new File("saves/canju/");
+        if (!dir.exists()) dir.mkdirs();
+
+        File[] files = dir.listFiles((d, name) -> name.startsWith("canju") && name.endsWith(".dat"));
+
+        allEndgameFiles.clear();
+        if (files != null) {
+            // 按文件名排序，保证顺序是 canju01, canju02...
+            Arrays.sort(files, Comparator.comparing(File::getName));
+            allEndgameFiles.addAll(Arrays.asList(files));
+        }
+
+        currentPage = 0;
+        updateGrid();
+    }
+
+    private void updateGrid() {
+        endgameGrid.getChildren().clear(); // 清空内容，但保留上面设置的行列约束
+
+        int totalPages = (int) Math.ceil((double) allEndgameFiles.size() / ITEMS_PER_PAGE);
+        if (totalPages == 0) totalPages = 1;
+
+        pageLabel.setText((currentPage + 1) + " / " + totalPages);
+
+        int start = currentPage * ITEMS_PER_PAGE;
+        int end = Math.min(start + ITEMS_PER_PAGE, allEndgameFiles.size());
+
+        int row = 0;
+        int col = 0;
+
+        // 只需要简单的循环，不需要担心填不满的问题
+        // 因为 Grid 已经被 ColumnConstraints 锁死了
+        for (int i = start; i < end; i++) {
+            File file = allEndgameFiles.get(i);
+            String fileName = "第 " + (i + 1) + " 关";
+
+            PixelatedButton btn = new PixelatedButton(fileName, "Button1", () -> {
+                XiangQiApp app = (XiangQiApp) FXGL.getApp();
+                app.loadEndgameFromFile(file);
+            });
+
+            // 按钮内部缩放
+            btn.setScaleX(0.6);
+            btn.setScaleY(0.6);
+
+            // 使用 StackPane 作为一个固定大小的容器放入格子
+            // 这样无论按钮怎么缩放，格子里的占位符大小是不变的
+            StackPane cellContainer = new StackPane(btn);
+            // 容器大小要小于 Grid 的格子大小 (550/4 ≈ 137)
+            cellContainer.setPrefSize(120, 50);
+            cellContainer.setAlignment(Pos.CENTER);
+
+            endgameGrid.add(cellContainer, col, row);
+
+            col++;
+            if (col >= 4) {
+                col = 0;
+                row++;
+            }
+        }
+
+        // 如果没有文件，显示提示
+        if (allEndgameFiles.isEmpty()) {
+            Label emptyLabel = new Label("暂无残局文件");
+            emptyLabel.setTextFill(Color.GRAY);
+            endgameGrid.add(emptyLabel, 1, 1, 2, 1); // 放在中间
+        }
+    }
+
+    private void prevPage() {
+        if (currentPage > 0) {
+            currentPage--;
+            updateGrid();
+        }
+    }
+
+    private void nextPage() {
+        int totalPages = (int) Math.ceil((double) allEndgameFiles.size() / ITEMS_PER_PAGE);
+        if (currentPage < totalPages - 1) {
+            currentPage++;
+            updateGrid();
+        }
     }
 
     private void initOnlineLobbyView() {

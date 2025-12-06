@@ -14,7 +14,8 @@ import javafx.application.Platform;
 import javafx.concurrent.Task;
 import javafx.geometry.Point2D;
 import javafx.geometry.Rectangle2D;
-import javafx.scene.shape.Circle; // 【新增】导入圆形
+import javafx.scene.shape.Circle;
+import javafx.scene.shape.Rectangle;
 import javafx.scene.text.Text;
 import javafx.util.Duration;
 import javafx.scene.paint.Color;
@@ -35,12 +36,15 @@ public class boardController {
     private boolean isOnlineMode = false;
     private boolean amIRed = true;
     private TimerAction aiAutoStartTimer = null;
+
+    // 高亮实体列表
     private List<Entity> highlightEntities = new ArrayList<>();
 
     public boardController(ChessBoardModel model) {
         this.model = model;
     }
 
+    // --- 【辅助】获取强转后的 App 实例 ---
     private XiangQiApp getApp() {
         return (XiangQiApp) FXGL.getApp();
     }
@@ -82,7 +86,6 @@ public class boardController {
             }
             else if (msg.startsWith("MOVE")) {
                 String[] parts = msg.split(" ");
-                // MOVE r1 c1 r2 c2
                 int r1 = Integer.parseInt(parts[1]);
                 int c1 = Integer.parseInt(parts[2]);
                 int r2 = Integer.parseInt(parts[3]);
@@ -189,7 +192,7 @@ public class boardController {
         highlightEntities.clear();
     }
 
-    // --- UI 按钮调用 ---
+    // --- UI 按钮调用 (网络请求) ---
 
     public void surrenderOnline() {
         if (!isOnlineMode) return;
@@ -205,12 +208,15 @@ public class boardController {
     public void restartOnline() { if (isOnlineMode) { netClient.sendRaw("RESTART_REQUEST"); getDialogService().showMessageBox("请求已发送..."); } }
     public void swapOnline() { if (isOnlineMode) { netClient.sendRaw("SWAP_REQUEST"); getDialogService().showMessageBox("请求已发送..."); } }
 
+    // --- 【重要修复】本地/标准模式必须的接口 ---
+
     public void surrender() {
         if (isOnlineMode) {
             surrenderOnline();
             return;
         }
         if (model.isGameOver()) return;
+
         String winner = model.isRedTurn() ? "黑方" : "红方";
         model.endGame(winner);
         showGameOverBanner();
@@ -223,11 +229,17 @@ public class boardController {
 
     public void undo() {
         if (isOnlineMode) { undoOnline(); return; }
-        if (aiAutoStartTimer != null && !aiAutoStartTimer.isExpired()) { aiAutoStartTimer.expire(); aiAutoStartTimer = null; }
+
+        if (aiAutoStartTimer != null && !aiAutoStartTimer.isExpired()) {
+            aiAutoStartTimer.expire(); aiAutoStartTimer = null;
+        }
         if (model.undoMove()) {
             refreshBoardView();
+            // 悔棋后如果是 AI 回合，延迟触发 AI
             if (!model.isRedTurn() && !model.isGameOver()) {
-                if(getApp().isAIEnabled()) aiAutoStartTimer = runOnce(this::startAITurn, Duration.seconds(1.0));
+                if(getApp().isAIEnabled()) {
+                    aiAutoStartTimer = runOnce(() -> startAITurn(getApp().getAIDifficulty()), Duration.seconds(1.0));
+                }
             }
         }
     }
@@ -282,7 +294,7 @@ public class boardController {
             } else {
                 XiangQiApp app = getApp();
                 if (app.isAIEnabled() && !model.isRedTurn() && !model.isGameOver()) {
-                    startAITurn();
+                    startAITurn(app.getAIDifficulty());
                 }
             }
         }
@@ -292,10 +304,6 @@ public class boardController {
     private boolean executeMove(AbstractPiece piece, int targetRow, int targetCol, boolean isRemote) {
         Entity pieceEntity = findEntityByLogic(piece);
         if (pieceEntity == null) return false;
-
-        // 注意：这里我们不再需要 startRow/Col 来绘制起点的方框了
-        // int startRow = piece.getRow();
-        // int startCol = piece.getCol();
 
         AbstractPiece targetLogic = model.getPieceAt(targetRow, targetCol);
         Entity targetEntity = findEntityByLogic(targetLogic);
@@ -307,7 +315,7 @@ public class boardController {
             playMoveAndEndGameAnimation(pieceEntity, targetEntity, startPos, targetRow, targetCol);
             getApp().updateHistoryPanel();
 
-            // 【修改】只高亮终点 (targetRow, targetCol)，使用黄色圆形
+            // 绘制终点高亮 (黄色圆形)
             drawMoveHighlight(targetRow, targetCol, Color.YELLOW, 0);
         }
         return success;
@@ -317,13 +325,13 @@ public class boardController {
     //                 AI 逻辑
     // =========================================================
 
-    public void startAITurn() {
+    public void startAITurn(int depth) {
         getApp().getInputHandler().setLocked(true);
 
         Task<AIService.MoveResult> aiTask = new Task<>() {
             @Override
             protected AIService.MoveResult call() throws Exception {
-                return aiService.search(model, 4, false);
+                return aiService.search(model, depth, false);
             }
         };
 
@@ -352,6 +360,7 @@ public class boardController {
         Task<AIService.MoveResult> hintTask = new Task<>() {
             @Override
             protected AIService.MoveResult call() throws Exception {
+                // 请求 AI 计算一步最佳走法
                 return aiService.search(model, 4, model.isRedTurn());
             }
         };
@@ -359,15 +368,18 @@ public class boardController {
         hintTask.setOnSucceeded(e -> {
             AIService.MoveResult res = hintTask.getValue();
             if (res != null && res.move != null) {
-                // int r1 = res.move.getStartRow();
-                // int c1 = res.move.getStartCol();
+                // 获取 AI 建议移动的棋子
+                AbstractPiece pieceToMove = res.move.getMovedPiece();
+
                 int r2 = res.move.getEndRow();
                 int c2 = res.move.getEndCol();
 
-                // 【修改】只高亮 AI 推荐的终点位置，使用 Cyan 色圆形，3秒消失
-                drawMoveHighlight(r2, c2, Color.CYAN, 3.0);
+                // 【修改】不再画圆，而是显示该棋子的半透明虚影
+                showGhostPieceHint(pieceToMove, r2, c2);
             }
         });
+
+        // 启动后台线程
         new Thread(hintTask).start();
     }
 
@@ -375,36 +387,24 @@ public class boardController {
     //                 高亮 & 辅助
     // =========================================================
 
-    /**
-     * 【核心修改】只绘制目标位置的圆形高亮
-     */
     private void drawMoveHighlight(int row, int col, Color color, double autoRemoveTime) {
-        // 1. 如果不是临时提示（即是走棋产生的高亮），先清除旧的
         if (autoRemoveTime <= 0) {
             for (Entity e : highlightEntities) e.removeFromWorld();
             highlightEntities.clear();
         }
 
-        // 2. 计算坐标 (获取棋子图片的左上角)
         Point2D topLeft = XiangQiApp.getVisualPosition(row, col);
-
-        // 3. 计算圆形中心点
-        // 图片半径 pieceRadius = (90 - 8) / 2 = 41
-        // 圆心应该在 topLeft + 41, 41
         double offset = (CELL_SIZE - 8) / 2.0;
         Point2D center = topLeft.add(offset, offset);
 
-        // 4. 生成圆形实体
-        double radius = offset + 2; // 稍微小一点点，留个边
+        // 圆形高亮
+        double radius = offset + 2;
         Entity circle = entityBuilder()
-                .at(center) // 实体位置在圆心 (对于 Circle View 来说)
-                // 注意：FXGL 的 view 如果是 Node，默认以 (0,0) 为左上角
-                // 但 Circle 的 (0,0) 是圆心。所以 entityBuilder.at(center) + view(circle) 是对的。
-                .view(new Circle(radius, color.deriveColor(0, 1, 1, 0.9))) // 50% 透明度
-                .zIndex(-1) // 放在棋子下面
+                .at(center)
+                .view(new Circle(radius, color.deriveColor(0, 1, 1, 0.5))) // 50% 透明
+                .zIndex(-1)
                 .buildAndAttach();
 
-        // 5. 管理生命周期
         if (autoRemoveTime > 0) {
             runOnce(circle::removeFromWorld, Duration.seconds(autoRemoveTime));
         } else {
@@ -412,7 +412,49 @@ public class boardController {
         }
     }
 
-    // ... (排局处理 handleSetupClick 保持不变) ...
+    /**
+     * 【新增】在指定位置显示一个半透明的棋子虚影
+     */
+    private void showGhostPieceHint(AbstractPiece piece, int row, int col) {
+        // 1. 清除旧的高亮/虚影
+        for (Entity e : highlightEntities) e.removeFromWorld();
+        highlightEntities.clear();
+
+        // 2. 计算图片文件名 (逻辑与 Factory 中一致)
+        // 格式例如: "RedCannon.png" 或 "BlackHorse.png"
+        String colorPrefix = piece.isRed() ? "Red" : "Black";
+        String typeName = piece.getClass().getSimpleName().replace("Piece", "");
+        String textureName = colorPrefix + typeName + ".png";
+
+        // 3. 加载图片纹理
+        var texture = FXGL.getAssetLoader().loadTexture(textureName);
+
+        // 设置尺寸 (需与 XiangQiApp.CELL_SIZE 配合，这里减去一点边距)
+        double visualSize = XiangQiApp.CELL_SIZE - 8;
+        texture.setFitWidth(visualSize);
+        texture.setFitHeight(visualSize);
+        texture.setPreserveRatio(true);
+
+        // 【关键】设置透明度 (0.0 完全透明 - 1.0 完全不透明)
+        // 0.6 左右可以营造出不错的“虚影”效果
+        texture.setOpacity(0.6);
+
+        // 4. 计算屏幕坐标
+        Point2D pos = XiangQiApp.getVisualPosition(row, col);
+
+        // 5. 生成实体
+        Entity ghost = entityBuilder()
+                .at(pos) // 设置位置
+                .view(texture) // 设置半透明图片
+                .zIndex(100)   // 放在最上层，确保能覆盖住目标位置可能存在的敌方棋子
+                .buildAndAttach();
+
+        // 6. 添加到列表以便管理，并设置 3 秒后自动消失
+        highlightEntities.add(ghost);
+        runOnce(ghost::removeFromWorld, Duration.seconds(3.0));
+    }
+
+    // ... (排局处理 handleSetupClick 等保持不变) ...
     private void handleSetupClick(int row, int col, XiangQiApp app) {
         AbstractPiece existing = model.getPieceAt(row, col);
         String type = app.getSelectedPieceType();
@@ -432,6 +474,7 @@ public class boardController {
 
             AbstractPiece newPiece = createPiece(type, row, col, isRed);
 
+            // 校验逻辑
             if (newPiece instanceof GeneralPiece) {
                 if (!isValidPalace(newPiece)) { getDialogService().showMessageBox("必须在九宫格内"); return; }
                 AbstractPiece old = model.FindKing(isRed);
@@ -479,7 +522,6 @@ public class boardController {
     private void showLegalMoves(AbstractPiece piece) {
         clearMoveIndicators();
         for (Point p : piece.getLegalMoves(model)) {
-            // 防止送将过滤
             if (model.tryMoveAndCheckSafe(piece, p.y, p.x)) {
                 spawn("MoveIndicator", XiangQiApp.getVisualPosition(p.y, p.x));
             }

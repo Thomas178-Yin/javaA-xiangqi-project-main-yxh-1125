@@ -61,7 +61,9 @@ public class XiangQiApp extends GameApplication {
     private boolean isLoadedGame = false;
     private boolean isRestartingCustom = false;
     private boolean isOnlineLaunch = false;
-    private boolean isAIEnabled = false;
+    //ai
+    private int aiLevel = 0;
+
 
     private ChessBoardModel customSetupSnapshot;
     private String selectedPieceType = null;
@@ -99,8 +101,13 @@ public class XiangQiApp extends GameApplication {
     public UserManager getUserManager() { return userManager; }
     public String getCurrentUser() { return currentUser; }
     public boolean isGuest() { return isGuestMode; }
-    public boolean isAIEnabled() { return isAIEnabled; }
-    public void setAIEnabled(boolean enabled) { this.isAIEnabled = enabled; }
+    public boolean isAIEnabled() { return aiLevel > 0; }
+    public void setAIEnabled(boolean enabled) {
+        this.aiLevel = enabled ? 1 : 0; // 默认开启设为 1，或者重置为 0
+    }
+    public int getAIDifficulty() {
+        return aiLevel;
+    }
 
     public void login(String username) { this.currentUser = username; this.isGuestMode = false; }
     public void loginAsGuest() { this.currentUser = "Guest"; this.isGuestMode = true; }
@@ -246,7 +253,7 @@ public class XiangQiApp extends GameApplication {
         var btnSurrender = new PixelatedButton("投降", "Button1", () -> { if (boardController != null) boardController.surrender(); });
         var btnSave = new PixelatedButton("保存游戏", "Button1", this::openSaveDialog);
         var btnRestart = new PixelatedButton("重新开始", "Button1", this::handleRestartGame);
-        var btnHistory = new PixelatedButton("历史记录", "Button1", () -> getGameController().gotoGameMenu());
+        var btnHistory = new PixelatedButton("菜单", "Button1", () -> getGameController().gotoGameMenu());
         standardGameUI = new VBox(10, btnUndo, btnSave, btnRestart, btnSurrender, btnHistory);
         addUINode(standardGameUI, rightX, 50);
 
@@ -254,10 +261,19 @@ public class XiangQiApp extends GameApplication {
         double leftX = Math.max(20, BOARD_START_X - UI_GAP - UI_WIDTH);
 
         var btnToggleAI = new PixelatedButton("AI: 关闭", "Button1", null);
+        updateAIButtonText(btnToggleAI);
+
         btnToggleAI.setOnMouseClicked(e -> {
-            isAIEnabled = !isAIEnabled;
-            ((Text)btnToggleAI.getChildren().get(1)).setText(isAIEnabled ? "AI: 开启" : "AI: 关闭");
-            if (isAIEnabled && !model.isRedTurn() && boardController != null) boardController.startAITurn();
+            // 循环切换难度: 0 -> 1 -> 2 -> 3 -> 4 -> 0
+            aiLevel = (aiLevel + 1) % 5;
+
+            // 更新按钮文字
+            updateAIButtonText(btnToggleAI);
+
+            // 如果 AI 刚刚被打开，且当前轮到黑方走，立即触发 AI
+            if (aiLevel > 0 && !model.isRedTurn() && boardController != null) {
+                boardController.startAITurn(aiLevel);
+            }
         });
 
         var btnHint = new PixelatedButton("AI 提示", "Button1", () -> {
@@ -381,7 +397,7 @@ public class XiangQiApp extends GameApplication {
         removeUINode(leftSetupPanel); removeUINode(rightSetupPanel); removeUINode(turnSelectionPanel);
         model.setRedTurn(isRedFirst); isSettingUp = false; selectedPieceType = null;
         initStandardGameUI(); turnIndicator.update(isRedFirst, false);
-        if (!isRedFirst && isAIEnabled && boardController!=null) boardController.startAITurn();
+        if (!isRedFirst && isAIEnabled() && boardController!=null) boardController.startAITurn(aiLevel);
     }
 
     private VBox createPiecePalette(boolean red) {
@@ -450,6 +466,46 @@ public class XiangQiApp extends GameApplication {
         getInput().addAction(new UserAction("Click") {
             @Override protected void onActionEnd() { if (inputHandler != null) inputHandler.handleMouseClick(getInput().getMousePositionWorld()); }
         }, MouseButton.PRIMARY);
+    }
+
+    public void loadEndgameFromFile(File file) {
+        try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(file))) {
+            ChessBoardModel m = (ChessBoardModel) ois.readObject();
+            m.rebuildAfterLoad(); // 修复 transient 数据
+
+            this.model = m;
+
+            // 设置状态标记
+            this.isCustomMode = false;
+            this.isLoadedGame = true; // 标记为读档模式，这样 initGame 会直接用这个 model
+            this.isSettingUp = false;
+            this.isOnlineLaunch = false;
+
+            // 进入游戏场景
+            getGameController().startNewGame();
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            getDialogService().showMessageBox("读取残局文件失败: " + file.getName());
+        }
+    }
+
+    private void updateAIButtonText(PixelatedButton btn) {
+        String text = "";
+        switch (aiLevel) {
+            case 0: text = "AI: 关闭"; break;
+            case 1: text = "AI: 新手"; break; // 深度 1
+            case 2: text = "AI: 中等"; break; // 深度 2
+            case 3: text = "AI: 困难"; break; // 深度 3
+            case 4: text = "AI: 专家"; break; // 深度 4
+        }
+        btn.setText(text);
+
+        // 可选：根据难度改变文字颜色，增加视觉提示
+        if (aiLevel == 0) btn.setTextColor(Color.WHITE);
+        else if (aiLevel <= 2) btn.setTextColor(Color.LIGHTGREEN);
+        else if (aiLevel == 3) btn.setTextColor(Color.YELLOW);
+        else btn.setTextColor(Color.RED);
     }
 
     public static void main(String[] args) {
