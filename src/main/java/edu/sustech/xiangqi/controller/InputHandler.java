@@ -1,5 +1,6 @@
 package edu.sustech.xiangqi.controller;
 
+import edu.sustech.xiangqi.XiangQiApp;
 import edu.sustech.xiangqi.model.ChessBoardModel;
 import javafx.geometry.Point2D;
 import static edu.sustech.xiangqi.XiangQiApp.*; // 导入静态常量
@@ -30,8 +31,18 @@ public class InputHandler {
         double xInGrid = clickX - (BOARD_START_X + MARGIN);
         double yInGrid = clickY - (BOARD_START_Y + MARGIN); // 使用 BOARD_START_Y
 
-        int col = Math.round((float) (xInGrid / CELL_SIZE));
-        int row = Math.round((float) (yInGrid / CELL_SIZE));
+        int visualCol = Math.round((float) (xInGrid / CELL_SIZE));
+        int visualRow = Math.round((float) (yInGrid / CELL_SIZE));
+
+        // 将视觉坐标转换为逻辑坐标
+        int row, col;
+        if (XiangQiApp.isBoardFlipped) {
+            row = 9 - visualRow;
+            col = 8 - visualCol;
+        } else {
+            row = visualRow;
+            col = visualCol;
+        }
 
         if (row < 0 || row >= ChessBoardModel.getRows() || col < 0 || col >= ChessBoardModel.getCols()) {
             return;

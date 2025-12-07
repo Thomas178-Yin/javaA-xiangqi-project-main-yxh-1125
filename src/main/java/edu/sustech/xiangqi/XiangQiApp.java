@@ -66,6 +66,10 @@ public class XiangQiApp extends GameApplication {
 
 
     private ChessBoardModel customSetupSnapshot;
+    //存储初始状态
+    public ChessBoardModel loadedGameSnapshot;
+    //是否正在重开读取的对局
+    private boolean isRestartingLoaded = false;
     private String selectedPieceType = null;
     private boolean selectedPieceIsRed = true;
 
@@ -84,6 +88,8 @@ public class XiangQiApp extends GameApplication {
     private String currentUser = "Guest";
     private boolean isGuestMode = true;
     private static final String SAVE_DIR = "saves/";
+    // 视角翻转标志
+    public static boolean isBoardFlipped = false;
 
     // --- Getters & Setters ---
     public void setOnlineLaunch(boolean isOnline) { this.isOnlineLaunch = isOnline; }
@@ -120,8 +126,14 @@ public class XiangQiApp extends GameApplication {
     }
 
     public static Point2D getVisualPosition(int row, int col) {
-        double centerX = BOARD_START_X + MARGIN + col * CELL_SIZE + PIECE_OFFSET_X;
-        double centerY = BOARD_START_Y + MARGIN + row * CELL_SIZE + PIECE_OFFSET_Y;
+
+        //翻转
+        int visualRow = isBoardFlipped ? (9 - row) : row;
+        int visualCol = isBoardFlipped ? (8 - col) : col;
+
+        double centerX = BOARD_START_X + MARGIN + visualCol * CELL_SIZE + PIECE_OFFSET_X;
+        double centerY = BOARD_START_Y + MARGIN + visualRow * CELL_SIZE + PIECE_OFFSET_Y;
+
         double pieceRadius = (CELL_SIZE - 8) / 2.0;
         return new Point2D(centerX - pieceRadius, centerY - pieceRadius);
     }
@@ -159,20 +171,36 @@ public class XiangQiApp extends GameApplication {
     @Override
     protected void initGame() {
         getGameWorld().addEntityFactory(new XiangQiFactory());
+        if (!isOnlineLaunch) {
+            isBoardFlipped = false;
+        }
 
         if (isLoadedGame) {
+            // 第一次加载
             isLoadedGame = false;
             if (this.model == null) this.model = new ChessBoardModel();
             isSettingUp = false;
         } else if (isRestartingCustom) {
+            // 排局重开
             isRestartingCustom = false;
             this.model = deepCopy(customSetupSnapshot);
             isSettingUp = true;
             selectedPieceType = null;
-        } else if (isOnlineLaunch) {
+
+        }
+        else if (isRestartingLoaded) {
+            //残局/读档重开
+            isRestartingLoaded = false;
+            this.model = deepCopy(loadedGameSnapshot);
+            isSettingUp = false;
+            isCustomMode = false;
+        }
+        else if (isOnlineLaunch) {
+            //联机
             this.model = new ChessBoardModel();
             isCustomMode = false; isLoadedGame = false; isSettingUp = false;
         } else {
+            // 标准
             this.model = new ChessBoardModel();
             if (isCustomMode) {
                 this.model.clearBoard();
@@ -243,9 +271,8 @@ public class XiangQiApp extends GameApplication {
         }
     }
 
-    /**
-     * 标准模式 UI (包含左侧 AI/棋谱)
-     */
+    //标准模式 UI (包含左侧 AI/棋谱)
+
     private void initStandardGameUI() {
         // 1. 右侧面板
         double rightX = BOARD_START_X + BOARD_WIDTH + UI_GAP - 20;
@@ -303,9 +330,9 @@ public class XiangQiApp extends GameApplication {
         addUINode(historyPanel);
     }
 
-    /**
-     * 联机模式 UI
-     */
+
+    //联机模式 UI
+
     private void initOnlineGameUI() {
         double uiX = BOARD_START_X + BOARD_WIDTH + UI_GAP - 20;
         var btnUndo = new PixelatedButton("申请悔棋", "Button1", () -> { if (boardController != null) boardController.undoOnline(); });
@@ -326,8 +353,15 @@ public class XiangQiApp extends GameApplication {
     private void handleRestartGame() {
         getDialogService().showConfirmationBox("确定要重新开始吗？", yes -> {
             if (yes) {
-                if (isCustomMode && customSetupSnapshot != null) isRestartingCustom = true;
-                else { isCustomMode = false; isLoadedGame = false; }
+                if (isCustomMode && customSetupSnapshot != null) {
+                    isRestartingCustom = true;
+                }
+                else if (loadedGameSnapshot != null) {
+                    isRestartingLoaded = true;
+                }
+                else {
+                    isCustomMode = false; isLoadedGame = false;
+                }
                 getGameController().startNewGame();
             }
         });
@@ -443,19 +477,33 @@ public class XiangQiApp extends GameApplication {
         if (isGuestMode) { getDialogService().showMessageBox("游客无法存档"); return; }
         getDialogService().showChoiceBox("选择位置", List.of("存档 1", "存档 2", "存档 3"), s -> saveGameToSlot(Integer.parseInt(s.split(" ")[1])));
     }
+
     private void loadGameFromSlot(int slot) {
         try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(SAVE_DIR + currentUser + "_save_" + slot + ".dat"))) {
-            ChessBoardModel m = (ChessBoardModel) ois.readObject(); m.rebuildAfterLoad();
-            this.model = m; this.isCustomMode = false; this.isLoadedGame = true; getGameController().startNewGame();
-        } catch (Exception e) { getDialogService().showMessageBox("读取失败"); }
+            ChessBoardModel m = (ChessBoardModel) ois.readObject();
+            m.rebuildAfterLoad();
+
+            this.model = m;
+            this.loadedGameSnapshot = deepCopy(m);
+            this.isCustomMode = false;
+            this.isLoadedGame = true;
+            getGameController().startNewGame();
+        }
+        catch (Exception e) {
+            getDialogService().showMessageBox("读取失败"); }
     }
+
     public void openLoadDialog() {
         if (isGuestMode) { getDialogService().showMessageBox("游客无法读档"); return; }
         List<String> slots = new ArrayList<>();
         for (int i=1; i<=3; i++) if (new File(SAVE_DIR + currentUser + "_save_" + i + ".dat").exists()) slots.add("存档 " + i);
-        if (slots.isEmpty()) { getDialogService().showMessageBox("无存档"); return; }
+        if (slots.isEmpty()) {
+            getDialogService().showMessageBox("无存档");
+            return;
+        }
         getDialogService().showChoiceBox("读取位置", slots, s -> loadGameFromSlot(Integer.parseInt(s.split(" ")[1])));
     }
+
     public boolean hasSaveFile() {
         if (isGuestMode) return false;
         for (int i=1; i<=3; i++) if (new File(SAVE_DIR + currentUser + "_save_" + i + ".dat").exists()) return true;
@@ -474,7 +522,7 @@ public class XiangQiApp extends GameApplication {
             m.rebuildAfterLoad(); // 修复 transient 数据
 
             this.model = m;
-
+            this.loadedGameSnapshot = deepCopy(m);
             // 设置状态标记
             this.isCustomMode = false;
             this.isLoadedGame = true; // 标记为读档模式，这样 initGame 会直接用这个 model

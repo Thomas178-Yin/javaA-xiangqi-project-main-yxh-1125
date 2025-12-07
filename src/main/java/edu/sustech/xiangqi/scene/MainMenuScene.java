@@ -323,6 +323,7 @@ public class MainMenuScene extends FXGLMenu {
             app.setCustomMode(false);
             app.setLoadedGame(false);
             app.setOnlineLaunch(false);
+            app.loadedGameSnapshot = null;
             fireNewGame();
         });
         btnNew.setScaleX(scale); btnNew.setScaleY(scale);
@@ -332,6 +333,7 @@ public class MainMenuScene extends FXGLMenu {
             app.setCustomMode(true);
             app.setLoadedGame(false);
             app.setOnlineLaunch(false);
+            app.loadedGameSnapshot = null;
             fireNewGame();
         });
         btnCustom.setScaleX(scale); btnCustom.setScaleY(scale);
