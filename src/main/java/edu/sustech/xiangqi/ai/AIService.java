@@ -23,11 +23,18 @@ public class AIService {
         // 以后所有的计算都在 cloneModel 上进行，绝对不会污染 realModel
         ChessBoardModel cloneModel = realModel.deepClone();
 
+        List<MoveCommand> rootMoves = cloneModel.getAllLegalMoves(isRed);
+
+
         // 2. 在克隆对象上跑算法
         MoveResult result = minimax(cloneModel, depth, Integer.MIN_VALUE, Integer.MAX_VALUE, true, isRed);
 
         // 注意：result 里返回的 MoveCommand 包含的是 cloneModel 里的棋子对象
         // 传回 Controller 后，不能直接用来操作 UI，需要提取坐标
+        if (result == null || result.move == null) {
+            // 随便选一步
+            result = new MoveResult(-10000, rootMoves.get(0));
+        }
         return result;
     }
 
