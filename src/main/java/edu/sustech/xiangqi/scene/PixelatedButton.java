@@ -70,6 +70,8 @@ public class PixelatedButton extends StackPane {
 
         setOnMousePressed(e -> {
             background.setImage(finalPressImage);
+            FXGL.play("按钮音效1.mp3");
+
             // 按下时文字稍微下沉一点点，增加立体感
             text.setTranslateY(2);
         });
