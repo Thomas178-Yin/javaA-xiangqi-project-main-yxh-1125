@@ -25,7 +25,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static com.almasb.fxgl.dsl.FXGL.*;
-import static edu.sustech.xiangqi.XiangQiApp.CELL_SIZE;
+import static edu.sustech.xiangqi.XiangQiApp.*;
 
 public class boardController {
 
@@ -77,12 +77,15 @@ public class boardController {
             if (msg.startsWith("START")) {
                 if (msg.contains("RED")) {
                     amIRed = true;
+                    XiangQiApp.isBoardFlipped = false;
                     getDialogService().showMessageBox("匹配成功！你是红方 (先手)");
                 } else {
                     amIRed = false;
+                    XiangQiApp.isBoardFlipped = true;
                     getDialogService().showMessageBox("匹配成功！你是黑方 (后手)");
                 }
                 syncInputLock();
+                refreshBoardView();
             }
             else if (msg.startsWith("MOVE")) {
                 String[] parts = msg.split(" ");
@@ -164,6 +167,11 @@ public class boardController {
 
     private void doRestart() {
         model.reset();
+
+        if (!isOnlineMode) {
+            XiangQiApp.isBoardFlipped = false;
+        }
+
         refreshBoardView();
 
         XiangQiApp app = getApp();
@@ -190,6 +198,14 @@ public class boardController {
         // 清除高亮
         for (Entity e : highlightEntities) e.removeFromWorld();
         highlightEntities.clear();
+
+//        //翻转棋盘
+//        getGameWorld().getEntitiesByType(EntityType.BOARD).forEach(board -> {
+//            board.setRotation(XiangQiApp.isBoardFlipped ? 180 : 0);
+//            board.setX(XiangQiApp.isBoardFlipped ? BOARD_START_X + BOARD_WIDTH : BOARD_START_X);
+//            board.setY(XiangQiApp.isBoardFlipped ? BOARD_START_Y + BOARD_HEIGHT : BOARD_START_Y);
+//        });
+
     }
 
     // --- UI 按钮调用 (网络请求) ---
