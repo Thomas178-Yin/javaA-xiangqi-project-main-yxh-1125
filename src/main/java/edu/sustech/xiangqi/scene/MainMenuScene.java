@@ -596,6 +596,9 @@ public class MainMenuScene extends FXGLMenu {
     private void handleUserLogin() {
         String user = inputUser.getText().trim();
         String pass = inputPass.getText();
+        if (user.equals("canju")){
+            statusLabel.setText("不能使用这个用户名"); statusLabel.setTextFill(ERROR_COLOR); return;
+        }
         if (user.isEmpty() || pass.isEmpty()) {
             statusLabel.setText("请输入完整信息"); statusLabel.setTextFill(ERROR_COLOR); return;
         }

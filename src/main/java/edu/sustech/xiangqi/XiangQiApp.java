@@ -15,13 +15,9 @@ import javafx.geometry.Point2D;
 import javafx.geometry.Pos;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
-import javafx.scene.control.ToggleButton;
-import javafx.scene.control.ToggleGroup;
-import javafx.scene.effect.DropShadow;
 import javafx.scene.image.ImageView;
 import javafx.scene.input.MouseButton;
 import javafx.scene.layout.VBox;
-import com.almasb.fxgl.input.Input;
 import com.almasb.fxgl.input.UserAction;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Rectangle;
@@ -544,12 +540,14 @@ public class XiangQiApp extends GameApplication {
     }
 
     // --- 存档读档 ---
+
     //自动保存逻辑
     public void saveAutoGame() {
         if (isGuestMode) return;
-        new File(SAVE_DIR).mkdirs();
+        new File(SAVE_DIR + currentUser + "/").mkdirs();
         // 文件名格式：Username_autosave.dat
-        try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(SAVE_DIR + currentUser + "_autosave.dat"))) {
+
+        try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(SAVE_DIR + currentUser + "/" + "autosave.dat"))) {
             oos.writeObject(model);
             System.out.println("自动保存成功: 第 " + model.getMoveHistoryStack().size() + " 步");
         } catch (Exception e) {
@@ -559,8 +557,8 @@ public class XiangQiApp extends GameApplication {
 
     //保存在某个位置
     private void saveGameToSlot(int slot) {
-        new File(SAVE_DIR).mkdirs();
-        try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(SAVE_DIR + currentUser + "_save_" + slot + ".dat"))) {
+        new File(SAVE_DIR+ currentUser + "/").mkdirs();
+        try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(SAVE_DIR + currentUser + "/" + "save_" + slot + ".dat"))) {
             oos.writeObject(model);
             getDialogService().showMessageBox("保存成功");
         } catch (Exception e) {}
@@ -581,9 +579,9 @@ public class XiangQiApp extends GameApplication {
     private void loadGameFromSlot(int slot) {
         String fileName;
         if (slot == -1) {
-            fileName = SAVE_DIR + currentUser + "_autosave.dat";
+            fileName = SAVE_DIR + currentUser + "/" + "autosave.dat";
         } else {
-            fileName = SAVE_DIR + currentUser + "_save_" + slot + ".dat";
+            fileName = SAVE_DIR + currentUser + "/" + "save_" + slot + ".dat";
         }
 
         try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(fileName))) {
@@ -604,11 +602,11 @@ public class XiangQiApp extends GameApplication {
     public void openLoadDialog() {
         if (isGuestMode) { getDialogService().showMessageBox("游客无法读档"); return; }
         List<String> slots = new ArrayList<>();
-        if (new File(SAVE_DIR + currentUser + "_autosave.dat").exists()) {
+        if (new File(SAVE_DIR + currentUser + "/" + "autosave.dat").exists()) {
             slots.add("自动存档");
         }
 
-        for (int i=1; i<=3; i++) if (new File(SAVE_DIR + currentUser + "_save_" + i + ".dat").exists()) slots.add("存档 " + i);
+        for (int i=1; i<=3; i++) if (new File(SAVE_DIR + currentUser + "/" + "save_" + i + ".dat").exists()) slots.add("存档 " + i);
         if (slots.isEmpty()) {
             getDialogService().showMessageBox("无存档");
             return;
@@ -624,7 +622,7 @@ public class XiangQiApp extends GameApplication {
 
     public boolean hasSaveFile() {
         if (isGuestMode) return false;
-        for (int i=1; i<=3; i++) if (new File(SAVE_DIR + currentUser + "_save_" + i + ".dat").exists()) return true;
+        for (int i=1; i<=3; i++) if (new File(SAVE_DIR + currentUser + "/" + "_save_" + i + ".dat").exists()) return true;
         return false;
     }
 
