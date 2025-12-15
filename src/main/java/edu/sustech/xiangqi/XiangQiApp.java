@@ -586,7 +586,7 @@ public class XiangQiApp extends GameApplication {
             fileName = SAVE_DIR + currentUser + "_save_" + slot + ".dat";
         }
 
-        try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(SAVE_DIR + currentUser + "_save_" + slot + ".dat"))) {
+        try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(fileName))) {
             ChessBoardModel m = (ChessBoardModel) ois.readObject();
             m.rebuildAfterLoad();
 
