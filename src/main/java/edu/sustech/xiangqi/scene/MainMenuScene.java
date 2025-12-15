@@ -733,8 +733,12 @@ public class MainMenuScene extends FXGLMenu {
                         "AI设计: 陶飞翔\n" +
                         "游戏模式: 尹玺骅\n\n" +
                         "特别感谢: 陶伊达老师、王大兴老师\n" +
-                        "Sustech CS103.\n" +
-                        "2025/12";
+                        "Sustech CS109.\n" +
+                        "2025/12\n\n"+
+                        "github:\n" +
+                        "项目代码：https://github.com/Thomas178-Yin/javaA-xiangqi-project-main-yxh-1125/tree/project_1202_online1.0\n" +
+                        "尹玺骅：https://github.com/Thomas178-Yin\n" +
+                        "陶飞翔：https://github.com/kevin258258";
 
         Text text = new Text(content);
         text.setFill(Color.WHITE);
@@ -745,7 +749,6 @@ public class MainMenuScene extends FXGLMenu {
 
         creditsBox = new VBox(20, title, text, btnBack);
         creditsBox.setAlignment(Pos.CENTER);
-
         creditsBox.setTranslateY(-50);
     }
 }

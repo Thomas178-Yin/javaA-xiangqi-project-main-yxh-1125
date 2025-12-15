@@ -44,8 +44,19 @@ public class InGameMenuScene extends FXGLMenu {
         getContentRoot().getChildren().add(menu);
 
         // 居中
-        menu.setTranslateX(XiangQiApp.APP_WIDTH / 2.0 - 100);
-        menu.setTranslateY(XiangQiApp.APP_HEIGHT / 2.0 - 200);
+        menu.translateXProperty().bind(
+                Bindings.createDoubleBinding(
+                        () -> XiangQiApp.APP_WIDTH / 2.0 - menu.getWidth() / 2.0,
+                        menu.widthProperty()
+                )
+        );
+
+        menu.translateYProperty().bind(
+                Bindings.createDoubleBinding(
+                        () -> XiangQiApp.APP_HEIGHT / 2.0 - menu.getHeight() / 2.0,
+                        menu.heightProperty()
+                )
+        );
     }
 
     //主菜单
@@ -154,13 +165,16 @@ public class InGameMenuScene extends FXGLMenu {
                         "游戏模式: 尹玺骅\n\n" +
                         "特别感谢: 陶伊达老师、王大兴老师\n" +
                         "Sustech CS109.\n" +
-                        "2025/12";
+                        "2025/12\n\n"+
+                        "github:\n" +
+                        "项目代码：https://github.com/Thomas178-Yin/javaA-xiangqi-project-main-yxh-1125/tree/project_1202_online1.0\n" +
+                        "尹玺骅：https://github.com/Thomas178-Yin\n" +
+                        "陶飞翔：https://github.com/kevin258258";
 
         Text text = new Text(content);
         text.setFill(Color.WHITE);
         text.setStyle("-fx-font-size: 18px; -fx-line-spacing: 8px;");
         text.setTextAlignment(javafx.scene.text.TextAlignment.CENTER);
-
         var btnBack = new PixelatedButton("返 回", "Button1", () -> switchMenu(settingsBox));
 
         creditsBox = new VBox(20, title, text, btnBack);
