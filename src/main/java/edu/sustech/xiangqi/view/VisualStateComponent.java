@@ -4,9 +4,8 @@ import com.almasb.fxgl.entity.component.Component;
 import javafx.scene.effect.ColorAdjust;
 import javafx.scene.effect.Effect;
 
-/**
- 控制棋子颜色
- */
+
+//控制棋子颜色
 public class VisualStateComponent extends Component {
 
     private ColorAdjust colorAdjust = new ColorAdjust();
@@ -14,39 +13,32 @@ public class VisualStateComponent extends Component {
 
     @Override
     public void onAdded() {
-        // When this component is added to an entity, apply the effect to its view.
-        // We get the view from the entity's ViewComponent.
         entity.getViewComponent().getParent().setEffect(colorAdjust);
 
-        // Initialize with a normal state (not darkened).
+        //初始化
         setNormal();
     }
 
-    /**
-     * Makes the piece appear darkened (inactive).
-     * Brightness is lowered.
-     */
+    //标记选中棋子
     public void setInactive() {
         colorAdjust.setBrightness(-0.5); // Lower brightness, -1.0 is black
         isActive = false;
     }
 
-    /**
-     * Makes the piece appear normal (active/selected).
-     * Brightness is set back to default.
-     */
+    //恢复
     public void setNormal() {
         colorAdjust.setBrightness(0.0); // 0.0 is the default, normal brightness
         isActive = true;
     }
 
+    //判断
     public boolean isActive() {
         return isActive;
     }
 
     @Override
     public void onRemoved() {
-        // Clean up the effect when the component or entity is removed.
+        //清理
         entity.getViewComponent().getParent().setEffect(null);
     }
 }

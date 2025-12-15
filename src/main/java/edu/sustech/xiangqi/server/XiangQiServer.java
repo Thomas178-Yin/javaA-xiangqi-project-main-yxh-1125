@@ -8,9 +8,6 @@ import java.util.concurrent.ConcurrentHashMap;
 public class XiangQiServer {
     private static final int PORT = 9999;
 
-    // 【核心】房间映射表：房间号 -> 等待中的玩家
-    // 如果房间里还没人，这就存第一个人。
-    // 如果房间里有人了，第二个人来了就配对，然后从表里移除。
     private static ConcurrentHashMap<String, ClientHandler> waitingPlayers = new ConcurrentHashMap<>();
 
     public static void main(String[] args) throws IOException {
@@ -32,6 +29,7 @@ public class XiangQiServer {
 
         public ClientHandler(Socket socket) { this.socket = socket; }
 
+        //发送信息
         public void send(String msg) { if (out != null) out.println(msg); }
 
         @Override
@@ -40,7 +38,7 @@ public class XiangQiServer {
                 in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
                 out = new PrintWriter(socket.getOutputStream(), true);
 
-                // 1. 读取第一条消息：必须是 "JOIN <RoomID>"
+                //读取第一条消息：必须是 "JOIN <RoomID>"
                 String request = in.readLine();
                 if (request != null && request.startsWith("JOIN")) {
                     roomId = request.split(" ")[1];
@@ -49,7 +47,7 @@ public class XiangQiServer {
                     handleMatching(roomId);
                 }
 
-                // 2. 游戏循环：转发消息
+                //游戏中
                 String msg;
                 while ((msg = in.readLine()) != null) {
                     if (opponent != null) {
@@ -59,7 +57,7 @@ public class XiangQiServer {
             } catch (Exception e) {
                 System.out.println("连接断开");
             } finally {
-                // 清理逻辑：如果断开了，且还在等待列表中，要移除
+                //如果断开了，且还在等待列表中，要移除
                 if (roomId != null && waitingPlayers.get(roomId) == this) {
                     waitingPlayers.remove(roomId);
                 }
@@ -67,17 +65,16 @@ public class XiangQiServer {
             }
         }
 
-        // 处理配对逻辑 (线程安全需要注意，这里简化处理)
+        // 处理配对逻辑
         private synchronized void handleMatching(String roomId) {
             if (waitingPlayers.containsKey(roomId)) {
-                // 房间里已经有 P1 了，我是 P2
                 ClientHandler p1 = waitingPlayers.get(roomId);
 
-                // 互相绑定
+                //绑定
                 this.opponent = p1;
                 p1.opponent = this;
 
-                // 从等待列表移除（房间满了）
+                // 列表移除（房间满了）
                 waitingPlayers.remove(roomId);
 
                 // 发送开始指令

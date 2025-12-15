@@ -11,12 +11,12 @@ public class UserManager {
 
     public UserManager() {
         users = new HashMap<>();
-        // 【修改 2】初始化时，确保文件夹存在
+        //确保文件夹存在
         ensureSaveDirectoryExists();
         loadUsers();
     }
 
-    // 【新增】辅助方法：创建文件夹
+    //创建文件夹
     private void ensureSaveDirectoryExists() {
         File dir = new File(SAVE_DIR);
         if (!dir.exists()) {
@@ -49,23 +49,17 @@ public class UserManager {
         }
     }
 
-    /**
-     * 检查用户是否存在
-     */
+//检查用户是否存在
     public boolean userExists(String username) {
         return users.containsKey(username);
     }
 
-    /**
-     * 验证密码
-     */
+//密码
     public boolean verifyPassword(String username, String password) {
         return users.containsKey(username) && users.get(username).equals(password);
     }
 
-    /**
-     * 注册新用户
-     */
+//注册
     public void registerUser(String username, String password) {
         users.put(username, password);
         saveUsers();

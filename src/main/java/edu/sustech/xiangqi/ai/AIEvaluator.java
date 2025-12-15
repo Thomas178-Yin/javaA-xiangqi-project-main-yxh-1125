@@ -5,7 +5,7 @@ import edu.sustech.xiangqi.model.*;
 public class AIEvaluator {
 
 
-    // 1. 基础子力价值
+    // 棋子分数
     private static final int BASE_ROOK    = 900;  // 车
     private static final int BASE_HORSE   = 400;  // 马
     private static final int BASE_CANNON  = 450;  // 炮
@@ -14,7 +14,7 @@ public class AIEvaluator {
     private static final int BASE_PAWN    = 10;   // 兵
     private static final int BASE_KING    = 10000;
 
-    // 2. 位置附加分 (这个是ai从网上抄的，应该能work吧）
+    //位置附加分
 
 
     // 【车】的位置分
@@ -95,9 +95,7 @@ public class AIEvaluator {
     // 3. 核心评估函数
     // =========================================================
 
-    /**
-     * @param isRedAi 如果AI是红方，返回的分数越高越好；如果是黑方，返回负数越大越好
-     */
+    //红正黑负
     public int evaluate(ChessBoardModel model, boolean isRedAi) {
         int totalScore = 0;
 

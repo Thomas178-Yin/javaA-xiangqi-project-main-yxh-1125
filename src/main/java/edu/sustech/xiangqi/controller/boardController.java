@@ -45,7 +45,7 @@ public class boardController {
         this.model = model;
     }
 
-    // --- 【辅助】获取强转后的 App 实例 ---
+    // 获取 App 实例
     private XiangQiApp getApp() {
         return (XiangQiApp) FXGL.getApp();
     }
@@ -71,10 +71,12 @@ public class boardController {
         }).start();
     }
 
+    //处理收到的网络消息
     private void onNetworkMessage(String msg) {
         Platform.runLater(() -> {
             System.out.println("[网络消息] " + msg);
 
+            //游戏开始消息
             if (msg.startsWith("START")) {
                 if (msg.contains("RED")) {
                     amIRed = true;
@@ -88,6 +90,8 @@ public class boardController {
                 syncInputLock();
                 refreshBoardView();
             }
+
+            //对方走棋消息
             else if (msg.startsWith("MOVE")) {
                 String[] parts = msg.split(" ");
                 int r1 = Integer.parseInt(parts[1]);
@@ -101,11 +105,12 @@ public class boardController {
                     syncInputLock();
                 }
             }
+            //对方投降消息
             else if (msg.equals("SURRENDER")) {
                 model.endGame(amIRed ? "红方" : "黑方");
                 showGameOverBanner();
             }
-            // --- 协议处理 ---
+            //悔棋处理
             else if (msg.equals("UNDO_REQUEST")) {
                 getDialogService().showConfirmationBox("对方请求悔棋，是否同意？", yes -> {
                     netClient.sendRaw(yes ? "UNDO_AGREE" : "UNDO_REFUSE");
@@ -119,6 +124,8 @@ public class boardController {
             else if (msg.equals("UNDO_REFUSE")) {
                 getDialogService().showMessageBox("对方拒绝悔棋。");
             }
+
+            //重开处理
             else if (msg.equals("RESTART_REQUEST")) {
                 getDialogService().showConfirmationBox("对方请求重新开始，是否同意？", yes -> {
                     netClient.sendRaw(yes ? "RESTART_AGREE" : "RESTART_REFUSE");
@@ -132,6 +139,8 @@ public class boardController {
             else if (msg.equals("RESTART_REFUSE")) {
                 getDialogService().showMessageBox("对方拒绝重新开始。");
             }
+
+            //交换先手处理
             else if (msg.equals("SWAP_REQUEST")) {
                 getDialogService().showConfirmationBox("对方请求交换先手并重开，是否同意？", yes -> {
                     netClient.sendRaw(yes ? "SWAP_AGREE" : "SWAP_REFUSE");
@@ -150,6 +159,7 @@ public class boardController {
 
     // --- 本地执行动作 ---
 
+    //锁定行棋???
     private void syncInputLock() {
         if (!isOnlineMode) return;
         if (model.isRedTurn() == amIRed) {
@@ -159,6 +169,7 @@ public class boardController {
         }
     }
 
+    //执行悔棋操作
     private void doUndo() {
         if (model.undoMove()) {
             refreshBoardView();
@@ -166,6 +177,7 @@ public class boardController {
         }
     }
 
+    //重开
     private void doRestart() {
         model.reset();
 
@@ -182,6 +194,8 @@ public class boardController {
         syncInputLock();
     }
 
+
+    //交换先手并重开
     private void doSwapAndRestart() {
         amIRed = !amIRed;
         if (isOnlineMode) {
@@ -192,6 +206,7 @@ public class boardController {
         getDialogService().showMessageBox("身份已交换，现在你是：" + role);
     }
 
+    //刷新重启
     private void refreshBoardView() {
         XiangQiApp app = getApp();
         app.spawnPiecesFromModel();
@@ -212,7 +227,7 @@ public class boardController {
 
     }
 
-    // --- UI 按钮调用 (网络请求) ---
+    // UI 按钮调用 (网络请求)
 
     public void surrenderOnline() {
         if (!isOnlineMode) return;
@@ -228,7 +243,7 @@ public class boardController {
     public void restartOnline() { if (isOnlineMode) { netClient.sendRaw("RESTART_REQUEST"); getDialogService().showMessageBox("请求已发送..."); } }
     public void swapOnline() { if (isOnlineMode) { netClient.sendRaw("SWAP_REQUEST"); getDialogService().showMessageBox("请求已发送..."); } }
 
-    // --- 【重要修复】本地/标准模式必须的接口 ---
+    // ---本地/标准模式必须的接口 ---
 
     public void surrender() {
         if (isOnlineMode) {
@@ -247,6 +262,8 @@ public class boardController {
             getApp().getTurnIndicator().update(model.isRedTurn(), model.isGameOver());
     }
 
+    //本地模式悔棋逻辑。
+    //包含 AI 对战时的特殊处理（撤销后延迟触发 AI）
     public void undo() {
         if (isOnlineMode) { undoOnline(); return; }
 
@@ -274,6 +291,8 @@ public class boardController {
     //                 本地交互逻辑
     // =========================================================
 
+
+    //棋盘格子的点击
     public void onGridClicked(int row, int col) {
         if (getApp().isSettingUp()) {
             handleSetupClick(row, col, getApp());
@@ -283,10 +302,12 @@ public class boardController {
 
         Entity clickedEntity = findEntityAt(row, col);
         if (selectedEntity != null) {
+            // 如果点击的是已经选中的棋子，取消选中
             if (clickedEntity == selectedEntity) {
                 deselectPiece();
                 return;
             }
+            // 否则尝试移动到目标格子
             handleMove(row, col);
         } else {
             if (clickedEntity != null) {
@@ -295,6 +316,7 @@ public class boardController {
         }
     }
 
+    //选中棋子
     private void handleSelection(Entity pieceEntity) {
         AbstractPiece logicPiece = pieceEntity.getComponent(PieceComponent.class).getPieceLogic();
         if (isOnlineMode && logicPiece.isRed() != amIRed) return;
@@ -306,6 +328,8 @@ public class boardController {
         }
     }
 
+
+    //尝试移动
     private void handleMove(int targetRow, int targetCol) {
         AbstractPiece pieceToMove = selectedEntity.getComponent(PieceComponent.class).getPieceLogic();
         int r1 = pieceToMove.getRow();
@@ -327,6 +351,7 @@ public class boardController {
         deselectPiece();
     }
 
+    //移动
     private boolean executeMove(AbstractPiece piece, int targetRow, int targetCol, boolean isRemote) {
         Entity pieceEntity = findEntityByLogic(piece);
         if (pieceEntity == null) return false;
@@ -344,6 +369,7 @@ public class boardController {
             // 绘制终点高亮 (黄色圆形)
             drawMoveHighlight(targetRow, targetCol, Color.YELLOW, 0);
 
+            // 触发自动保存 (每 2 步，非联机，非排局)
             XiangQiApp app = getApp();
             if (!isOnlineMode && !app.isCustomMode() && !app.isSettingUp()) {
                 int moveCount = model.getMoveHistoryStack().size();
@@ -360,6 +386,10 @@ public class boardController {
     //                 AI 逻辑
     // =========================================================
 
+    /**
+     * 启动 AI 思考线程。
+     * @param depth 搜索深度 (难度)
+     */
     public void startAITurn(int depth) {
         getApp().getInputHandler().setLocked(true);
 
@@ -388,6 +418,8 @@ public class boardController {
         new Thread(aiTask).start();
     }
 
+
+    //请求 AI 提示
     public void requestAIHint() {
         if (model.isGameOver()) return;
 //        getDialogService().showMessageBox("AI正在思考提示...");
@@ -420,7 +452,7 @@ public class boardController {
                 int r2 = res.move.getEndRow();
                 int c2 = res.move.getEndCol();
 
-                // 【修改】不再画圆，而是显示该棋子的半透明虚影
+                //半透明虚影提示
                 showGhostPieceHint(pieceToMove, r2, c2);
             }
         });
@@ -460,49 +492,45 @@ public class boardController {
         }
     }
 
-    /**
-     * 【新增】在指定位置显示一个半透明的棋子虚影
-     */
+    //AI提示_半透明棋子
     private void showGhostPieceHint(AbstractPiece piece, int row, int col) {
-        // 1. 清除旧的高亮/虚影
+        //清除旧的
         for (Entity e : highlightEntities) e.removeFromWorld();
         highlightEntities.clear();
 
-        // 2. 计算图片文件名 (逻辑与 Factory 中一致)
-        // 格式例如: "RedCannon.png" 或 "BlackHorse.png"
+        //计算图片文件名
         String colorPrefix = piece.isRed() ? "Red" : "Black";
         String typeName = piece.getClass().getSimpleName().replace("Piece", "");
         String textureName = colorPrefix + typeName + ".png";
 
-        // 3. 加载图片纹理
+        //加载图片
         var texture = FXGL.getAssetLoader().loadTexture(textureName);
 
-        // 设置尺寸 (需与 XiangQiApp.CELL_SIZE 配合，这里减去一点边距)
+        // 设置尺寸
         double visualSize = XiangQiApp.CELL_SIZE - 8;
         texture.setFitWidth(visualSize);
         texture.setFitHeight(visualSize);
         texture.setPreserveRatio(true);
 
-        // 【关键】设置透明度 (0.0 完全透明 - 1.0 完全不透明)
-        // 0.6 左右可以营造出不错的“虚影”效果
+        // 透明度
         texture.setOpacity(0.6);
 
-        // 4. 计算屏幕坐标
+        //坐标
         Point2D pos = XiangQiApp.getVisualPosition(row, col);
 
-        // 5. 生成实体
+        //生成
         Entity ghost = entityBuilder()
-                .at(pos) // 设置位置
-                .view(texture) // 设置半透明图片
-                .zIndex(100)   // 放在最上层，确保能覆盖住目标位置可能存在的敌方棋子
+                .at(pos)
+                .view(texture) // 半透明图片
+                .zIndex(100)   // 最上层
                 .buildAndAttach();
 
-        // 6. 添加到列表以便管理，并设置 3 秒后自动消失
+        // 3 秒后自动消失
         highlightEntities.add(ghost);
         runOnce(ghost::removeFromWorld, Duration.seconds(3.0));
     }
 
-    // ... (排局处理 handleSetupClick 等保持不变) ...
+    //排局模式下的点击
     private void handleSetupClick(int row, int col, XiangQiApp app) {
         AbstractPiece existing = model.getPieceAt(row, col);
         String type = app.getSelectedPieceType();
@@ -544,7 +572,7 @@ public class boardController {
         }
     }
 
-    // 校验逻辑
+    // 是否合法
     private boolean isValidPalace(AbstractPiece p) {
         int r = p.getRow(); int c = p.getCol();
         if (c < 3 || c > 5) return false;
@@ -567,6 +595,7 @@ public class boardController {
         }
     }
 
+    //生成合法移动
     private void showLegalMoves(AbstractPiece piece) {
         clearMoveIndicators();
         for (Point p : piece.getLegalMoves(model)) {
@@ -597,6 +626,8 @@ public class boardController {
     }
     private void clearMoveIndicators() { getGameWorld().getEntitiesByType(EntityType.MOVE_INDICATOR).forEach(Entity::removeFromWorld); }
 
+
+    //动画
     private void playMoveAndEndGameAnimation(Entity e, Entity t, Point2D start, int r, int c) {
         Point2D target = XiangQiApp.getVisualPosition(r, c);
         e.setPosition(target);
@@ -613,12 +644,14 @@ public class boardController {
             if (model.isGameOver()) showGameOverBanner();
             else {
 
-
+                //?????????????????????????????
             }
             updateTurnIndicator();
         }, Duration.seconds(0.25));
     }
 
+
+    //将军动画
     private void showCheckMessage() {
 
         Font myFont = getAssetLoader().loadFont("HYPixel11pxU-2.ttf").newFont(80);
@@ -640,10 +673,10 @@ public class boardController {
                 .fadeOut(checkText)
                 .buildAndPlay();
 
-        // 销毁
         runOnce(() -> getGameScene().removeUINode(checkText), Duration.seconds(2.0));
     }
 
+    //显示游戏结束
     private void showGameOverBanner() {
         XiangQiApp app = getApp();
         Text banner = app.getGameOverBanner();
@@ -654,22 +687,21 @@ public class boardController {
         animationBuilder().duration(Duration.seconds(0.5)).scale(banner).from(new Point2D(0,0)).to(new Point2D(1,1)).buildAndPlay();
         updateTurnIndicator();
     }
+
+    //悔棋取消结束
     private void hideGameOverBanner() {
-        // 获取 App 实例
         XiangQiApp app = (XiangQiApp) FXGL.getApp();
 
-        // 1. 隐藏文字
+        //隐藏一堆刚刚生成的东西
         if (app.getGameOverBanner() != null) {
             app.getGameOverBanner().setVisible(false);
         }
-
-        // 2. 隐藏黑色遮罩
         if (app.getGameOverDimmingRect() != null) {
             app.getGameOverDimmingRect().setVisible(false);
         }
     }
 
-
+    //创建棋子对象
     private AbstractPiece createPiece(String type, int r, int c, boolean red) {
         switch (type) {
             case "General": return new GeneralPiece(red?"帅":"将", r, c, red);

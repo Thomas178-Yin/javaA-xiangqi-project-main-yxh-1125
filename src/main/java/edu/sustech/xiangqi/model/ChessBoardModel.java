@@ -215,34 +215,30 @@ public class ChessBoardModel implements Serializable{
         return true;
     }
 
-    /**
-     * 【新增】悔棋方法
-     * @return true 如果悔棋成功, false 如果没有棋可悔
-     */
+    //悔棋方法
     public boolean undoMove() {
         if (moveHistory.isEmpty()) {
             return false;
         }
 
 
-        // 1. 从历史记录中弹出上一步的命令
+        //上一步的命令
         MoveCommand lastMove = moveHistory.pop();
 
-        // 2. 执行逆向操作
-        // a. 将移动的棋子移回原位
+        //执行逆向操作
+        //将移动的棋子移回原位
         AbstractPiece pieceToUndo = lastMove.getMovedPiece();
         pieceToUndo.moveTo(lastMove.getStartRow(), lastMove.getStartCol());
 
-        // b. 如果上一步有吃子，将被吃的棋子“复活”并放回棋盘
+        //被吃的棋子“复活”
         AbstractPiece capturedPiece = lastMove.getCapturedPiece();
         if (capturedPiece != null) {
             pieces.add(capturedPiece);
         }
 
-        // 3. 切换回上一回合
+        //切换回上一回合
         isRedTurn = !isRedTurn;
 
-        // 4. (重要) 撤销游戏结束状态
         // 如果上一步导致了游戏结束，悔棋后游戏应该继续
         if (isGameOver) {
             isGameOver = false;
@@ -337,8 +333,6 @@ public class ChessBoardModel implements Serializable{
                     int targetRow = move.y;
                     int targetCol = move.x;
 
-                    // --- 【修复开始】 ---
-
                     // 1. 获取目标位置的棋子 (潜在的被吃者)
                     AbstractPiece targetPiece = getPieceAt(targetRow, targetCol);
 
@@ -361,16 +355,12 @@ public class ChessBoardModel implements Serializable{
                         pieces.add(targetPiece);
                     }
 
-                    // --- 【修复结束】 ---
-
-                    // 只要找到一步能解围的棋，就不是死局
                     if (!stillInCheck) {
                         return false;
                     }
                 }
             }
         }
-
         // 跑遍了所有棋子的所有走法，都解不了将 -> 绝杀
         return true;
 
@@ -385,13 +375,13 @@ public class ChessBoardModel implements Serializable{
     }
 
     public boolean tryMoveAndCheckSafe(AbstractPiece piece, int targetRow, int targetCol) {
-        // 1. 记录原始状态
+        //记录原始状态
         int oldRow = piece.getRow();
         int oldCol = piece.getCol();
         AbstractPiece targetPiece = getPieceAt(targetRow, targetCol);
 
-        // 2. 模拟移动
-        // 如果目标点有子，先暂时移除
+        //模拟移动
+        //如果目标点有子，先暂时移除
         if (targetPiece != null) {
             pieces.remove(targetPiece);
         }
@@ -399,10 +389,10 @@ public class ChessBoardModel implements Serializable{
         piece.setRow(targetRow);
         piece.setCol(targetCol);
 
-        // 3. 检查己方老将是否被将军
+        //检查己方老将是否被将军
         boolean isSafe = !isGeneraInCheck(piece.isRed());
 
-        // 4. 恢复原始状态 (回溯)
+        //恢复原始状态
         piece.setRow(oldRow);
         piece.setCol(oldCol);
         if (targetPiece != null) {
@@ -412,7 +402,7 @@ public class ChessBoardModel implements Serializable{
         return isSafe;
     }
 
-    // --- 【新增】困毙检测：检查某一方是否还有任何合法且安全的走法 ---
+    // 困毙检测：检查某一方是否还有任何合法且安全的走法
     public boolean hasAnyLegalMove(boolean checkRed) {
         List<AbstractPiece> snapshot = new ArrayList<>(pieces);
 
@@ -461,15 +451,11 @@ public class ChessBoardModel implements Serializable{
         return simpleNotation;
     }
 
-    // --- 【新增】反序列化后的修复方法 ---
-    /**
-     * 当从文件读取存档后，因为 moveHistoryStrings 是 transient (空的)，
-     * 我们需要根据 moveHistory 栈重新生成它。
-     */
+    //修复方法
     public void rebuildAfterLoad() {
-        // 1. 重新初始化列表（因为它是 null）
+        //重新初始化列表
         moveHistoryStrings = FXCollections.observableArrayList();
-        // 2. 重新填充数据
+        //重新填充数据
         updateHistoryStrings();
     }
 
@@ -553,17 +539,17 @@ public class ChessBoardModel implements Serializable{
     public ChessBoardModel deepClone() {
         ChessBoardModel newModel = new ChessBoardModel();
 
-        // 1. 清空新棋盘默认初始化的棋子（因为构造函数里可能自带了初始化）
+        //清空新棋盘默认初始化的棋子
         newModel.pieces.clear();
         newModel.moveHistory.clear(); // 历史记录不用克隆，AI 不需要知道以前发生了什么
 
-        // 2. 复制基本状态
+        //复制基本状态
         newModel.isRedTurn = this.isRedTurn;
         newModel.isGameOver = this.isGameOver;
         newModel.winner = this.winner;
-        newModel.aiMode = true; // 克隆出来的棋盘，默认就是 AI 模式（静音模式）
+        newModel.aiMode = true; // 克隆出来的棋盘，默认就是 AI 模式
 
-        // 3. 【核心】深拷贝每一个棋子
+        //深拷贝每一个棋子
         for (AbstractPiece piece : this.pieces) {
             AbstractPiece clonedPiece = piece.copy();
             newModel.pieces.add(clonedPiece);
@@ -573,17 +559,17 @@ public class ChessBoardModel implements Serializable{
     }
 
     public void reset() {
-        // 1. 清空当前数据
+        //清空数据
         pieces.clear();
         moveHistory.clear();
         if (moveHistoryStrings != null) moveHistoryStrings.clear();
 
-        // 2. 恢复初始状态
+        //恢复初始状态
         isGameOver = false;
         winner = null;
         isRedTurn = true; // 永远是红方先手
 
-        // 3. 重新摆放棋子
+        //重新摆放棋子
         initializePieces();
     }
 

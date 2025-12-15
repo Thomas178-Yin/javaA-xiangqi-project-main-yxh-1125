@@ -38,57 +38,68 @@ import static com.almasb.fxgl.dsl.FXGL.*;
 
 public class XiangQiApp extends GameApplication {
 
-    public static final int CELL_SIZE = 90;
-    public static final int MARGIN = 31;
-    public static final int UI_GAP = 60;
+    public static final int CELL_SIZE = 90; //棋盘格子大小
+    public static final int MARGIN = 31;    //留白
+    public static final int UI_GAP = 60;    //UI与棋盘间距
     public static final int UI_WIDTH = 180;
-    public static final int BOARD_WIDTH = 796;
-    public static final int BOARD_HEIGHT = 887;
+    public static final int BOARD_WIDTH = 796;      //宽
+    public static final int BOARD_HEIGHT = 887;     //高
+
+    //计算总宽度/高度
     public static final int APP_WIDTH = UI_WIDTH + UI_GAP + BOARD_WIDTH + UI_GAP + UI_WIDTH + 40;
     public static final int APP_HEIGHT = BOARD_HEIGHT + 120;
+
+    //棋盘坐标
     public static final double BOARD_START_X = (APP_WIDTH - BOARD_WIDTH) / 2.0;
     public static final double BOARD_START_Y = (APP_HEIGHT - BOARD_HEIGHT) / 2.0;
+
+    //偏移调整
     public static final int PIECE_OFFSET_X = 5;
     public static final int PIECE_OFFSET_Y = 5;
 
+    //UI
     private Text gameOverBanner;
     private Rectangle gameOverDimmingRect;
     private TurnIndicator turnIndicator;
     private Font gameFont;
 
-    private boolean isCustomMode = false;
-    private boolean isSettingUp = false;
-    private boolean isLoadedGame = false;
-    private boolean isRestartingCustom = false;
-    private boolean isOnlineLaunch = false;
-    //ai
+    //游戏状态
+    private boolean isCustomMode = false;       // 排局模式
+    private boolean isSettingUp = false;        // 摆放棋子？/排局
+    private boolean isLoadedGame = false;       // 正在加载存档？
+    private boolean isRestartingCustom = false; // 正在重置排局？
+    private boolean isOnlineLaunch = false;     // 联机模式启动？
+
+    //ai等级
     private int aiLevel = 0;
 
+    //初始状态
+    private ChessBoardModel customSetupSnapshot;    // 排局模式
+    public ChessBoardModel loadedGameSnapshot;      // 读档游戏
+    private boolean isRestartingLoaded = false;     // 重置游戏？
 
-    private ChessBoardModel customSetupSnapshot;
-    //存储初始状态
-    public ChessBoardModel loadedGameSnapshot;
-    //是否正在重开读取的对局
-    private boolean isRestartingLoaded = false;
+    // 排局模式下放置棋子类型？
     private String selectedPieceType = null;
     private boolean selectedPieceIsRed = true;
 
     // UI 引用
-    private VBox leftSetupPanel;
-    private VBox rightSetupPanel;
-    private VBox standardGameUI;
-    private VBox leftGameUI; // AI 面板
-    private VBox turnSelectionPanel;
-    private HistoryPanel historyPanel; // 历史记录面板
+    private VBox leftSetupPanel;      // 排局模式左侧
+    private VBox rightSetupPanel;     // 排局模式右侧
+    private VBox standardGameUI;      // 标准游戏右侧
+    private VBox leftGameUI;          // 标准游戏左侧
+    private VBox turnSelectionPanel;  // 排局模式先手选择
+    private HistoryPanel historyPanel;// 棋谱
 
-    private ChessBoardModel model;
-    private boardController boardController;
+    // --- 核心组件 ---
+    private ChessBoardModel model;           // 棋盘model
+    private boardController boardController; // 棋盘
     private InputHandler inputHandler;
-    private UserManager userManager;
-    private String currentUser = "Guest";
-    private boolean isGuestMode = true;
-    private static final String SAVE_DIR = "saves/";
-    // 视角翻转标志
+    private UserManager userManager;         // 用户管理器
+    private String currentUser = "Guest";    // 当前登录用户名
+    private boolean isGuestMode = true;      // 游客模式？
+    private static final String SAVE_DIR = "saves/"; // 存档路径
+
+    // 视角翻转？
     public static boolean isBoardFlipped = false;
 
     //音乐列表
@@ -135,9 +146,11 @@ public class XiangQiApp extends GameApplication {
     }
     public boolean isCustomMode() { return isCustomMode; }
 
+    // 登录
     public void login(String username) { this.currentUser = username; this.isGuestMode = false; }
     public void loginAsGuest() { this.currentUser = "Guest"; this.isGuestMode = true; }
 
+    //信息文本设置
     public void centerTextInApp(Text text) {
         double textWidth = text.getLayoutBounds().getWidth();
         double textHeight = text.getLayoutBounds().getHeight();
@@ -145,6 +158,7 @@ public class XiangQiApp extends GameApplication {
         text.setTranslateY((APP_HEIGHT - textHeight) / 2 + text.getFont().getSize() * 0.3);
     }
 
+    //计算棋子坐标
     public static Point2D getVisualPosition(int row, int col) {
 
         //翻转
@@ -158,13 +172,14 @@ public class XiangQiApp extends GameApplication {
         return new Point2D(centerX - pieceRadius, centerY - pieceRadius);
     }
 
-    // 【关键修复】提供给 Controller 调用的方法
+    // 更新棋谱/调用controller
     public void updateHistoryPanel() {
         if (historyPanel != null && model != null) {
             historyPanel.updateHistory(model.getMoveHistoryStack());
         }
     }
 
+    //初始化
     @Override
     protected void initSettings(GameSettings settings) {
         settings.setTitle("中国象棋 1.0");
@@ -172,9 +187,11 @@ public class XiangQiApp extends GameApplication {
         settings.setWidth(APP_WIDTH);
         settings.setHeight(APP_HEIGHT);
 
+        //可以调整窗口大小
         settings.setManualResizeEnabled(true);
         settings.setPreserveResizeRatio(true);
 
+        //主菜单
         settings.setMainMenuEnabled(true);
         settings.setSceneFactory(new SceneFactory() {
             @Override public FXGLMenu newMainMenu() { return new MainMenuScene(); }
@@ -182,6 +199,7 @@ public class XiangQiApp extends GameApplication {
         });
     }
 
+    //字体
     @Override
     protected void onPreInit() {
         try {
@@ -192,6 +210,7 @@ public class XiangQiApp extends GameApplication {
         }
     }
 
+    //游戏初始化——加载一堆东西 呢
     @Override
     protected void initGame() {
         getGameWorld().addEntityFactory(new XiangQiFactory());
@@ -234,6 +253,7 @@ public class XiangQiApp extends GameApplication {
                 customSetupSnapshot = null;
             } else {
                 isSettingUp = false;
+                this.aiLevel = 0;
             }
         }
 
@@ -251,8 +271,12 @@ public class XiangQiApp extends GameApplication {
 
     }
 
+
+    //生成棋子根据model——棋局变动
     public void spawnPiecesFromModel() {
+        //移除
         getGameWorld().getEntitiesByType(EntityType.PIECE).forEach(entity -> entity.removeFromWorld());
+        //重新生成
         for (AbstractPiece pieceLogic : model.getPieces()) {
             String prefix = pieceLogic.isRed() ? "Red" : "Black";
             String type = pieceLogic.getClass().getSimpleName().replace("Piece", "");
@@ -261,6 +285,7 @@ public class XiangQiApp extends GameApplication {
         }
     }
 
+    //联机连接
     public void startOnlineConnection(String ip, String roomId, Text statusText) {
         this.isOnlineLaunch = true;
         this.setCustomMode(false);
@@ -271,6 +296,7 @@ public class XiangQiApp extends GameApplication {
         }, Duration.seconds(0.1));
     }
 
+    //UI初始化
     @Override
     protected void initUI() {
         getGameScene().getRoot().setStyle("-fx-background-color: #3a2e24;");
@@ -294,17 +320,15 @@ public class XiangQiApp extends GameApplication {
         if (isOnlineLaunch) {
             initOnlineGameUI();
         } else if (isCustomMode) {
-            // 【关键修复】直接调用本地方法，不依赖 Factory
-            if (isSettingUp) initSetupUI();
-            else initStandardGameUI();
+            if (isSettingUp) initSetupUI(); // 排局：摆放阶段
+            else initStandardGameUI();      // 排局：对战阶段
         } else {
             initStandardGameUI();
         }
 
     }
 
-    //标准模式 UI (包含左侧 AI/棋谱)
-
+    //标准模式 UI
     private void initStandardGameUI() {
         // 1. 右侧面板
         double rightX = BOARD_START_X + BOARD_WIDTH + UI_GAP - 20;
@@ -326,10 +350,10 @@ public class XiangQiApp extends GameApplication {
             // 循环切换难度: 0 -> 1 -> 2 -> 3 -> 4 -> 0
             aiLevel = (aiLevel + 1) % 5;
 
-            // 更新按钮文字
+            // 更新文字
             updateAIButtonText(btnToggleAI);
 
-            // 如果 AI 刚刚被打开，且当前轮到黑方走，立即触发 AI
+            //Ai触发？
             if (aiLevel > 0 && !model.isRedTurn() && boardController != null) {
                 boardController.startAITurn(aiLevel);
             }
@@ -350,11 +374,12 @@ public class XiangQiApp extends GameApplication {
         leftGameUI = new VBox(10, btnToggleAI, btnHint, btnNotation);
         addUINode(leftGameUI, leftX, 50);
 
+        //谁的回合
         turnIndicator = new TurnIndicator();
         turnIndicator.update(model.isRedTurn(), false);
         addUINode(turnIndicator, rightX, 750);
 
-        // 3. 棋谱面板初始化 (默认隐藏)
+        // 3. 棋谱（隐藏）
         historyPanel = new HistoryPanel(220, 600);
         historyPanel.setTranslateX(17);
         historyPanel.setTranslateY(APP_HEIGHT / 2.0 - 200);
@@ -364,7 +389,6 @@ public class XiangQiApp extends GameApplication {
 
 
     //联机模式 UI
-
     private void initOnlineGameUI() {
         double uiX = BOARD_START_X + BOARD_WIDTH + UI_GAP - 20;
         var btnUndo = new PixelatedButton("申请悔棋", "Button1", () -> { if (boardController != null) boardController.undoOnline(); });
@@ -379,6 +403,26 @@ public class XiangQiApp extends GameApplication {
         turnIndicator = new TurnIndicator();
         turnIndicator.update(true, false);
         addUINode(turnIndicator, uiX, 750);
+
+        //左侧面板
+        double leftX = Math.max(20, BOARD_START_X - UI_GAP - UI_WIDTH);
+        var btnSave = new PixelatedButton("保存游戏", "Button1", this::openSaveDialog);
+
+        var btnNotation = new PixelatedButton("棋 谱", "Button1", () -> {
+            if (historyPanel != null) {
+                historyPanel.setVisible(!historyPanel.isVisible());
+                if (historyPanel.isVisible()) updateHistoryPanel();
+            }
+        });
+
+        leftGameUI = new VBox(10, btnSave, btnNotation);
+        addUINode(leftGameUI, leftX, 50);
+
+        historyPanel = new HistoryPanel(220, 600);
+        historyPanel.setTranslateX(17);
+        historyPanel.setTranslateY(APP_HEIGHT / 2.0 - 200);
+        historyPanel.setVisible(false);
+        addUINode(historyPanel);
     }
 
     // 重启逻辑
@@ -449,7 +493,7 @@ public class XiangQiApp extends GameApplication {
 
     private boolean setupRedFirst = true;
 
-    // 【修复】将此方法设为 public，防止其他地方调用报错
+    //自定义排局验证是否正确
     public void tryStartCustomGame(boolean isRedFirst) {
         AbstractPiece rK = model.FindKing(true), bK = model.FindKing(false);
         if (rK == null || bK == null) { getDialogService().showMessageBox("必须各有一将！"); return; }
@@ -466,6 +510,7 @@ public class XiangQiApp extends GameApplication {
         if (!isRedFirst && isAIEnabled() && boardController!=null) boardController.startAITurn(aiLevel);
     }
 
+    //创建棋子
     private VBox createPiecePalette(boolean red) {
         VBox box = new VBox(10); box.setAlignment(Pos.TOP_CENTER); box.setPrefWidth(UI_WIDTH);
         Label t = new Label(red?"红方":"黑方"); t.setFont(gameFont); t.setTextFill(red?Color.RED:Color.BLACK); box.getChildren().add(t);
@@ -512,6 +557,7 @@ public class XiangQiApp extends GameApplication {
         }
     }
 
+    //保存在某个位置
     private void saveGameToSlot(int slot) {
         new File(SAVE_DIR).mkdirs();
         try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(SAVE_DIR + currentUser + "_save_" + slot + ".dat"))) {
@@ -519,16 +565,19 @@ public class XiangQiApp extends GameApplication {
             getDialogService().showMessageBox("保存成功");
         } catch (Exception e) {}
     }
+
+    //对话框
     public void openSaveDialog() {
         if (isGuestMode) { getDialogService().showMessageBox("游客无法存档"); return; }
 
-        // 【修改】加入 "返 回" 选项
+        // 加入 "返 回" 选项
         getDialogService().showChoiceBox("选择位置", List.of("存档 1", "存档 2", "存档 3", "返 回"), s -> {
             if (s.equals("返 回")) return;
             saveGameToSlot(Integer.parseInt(s.split(" ")[1]));
         });
     }
 
+    //加载存档
     private void loadGameFromSlot(int slot) {
         String fileName;
         if (slot == -1) {
@@ -551,6 +600,7 @@ public class XiangQiApp extends GameApplication {
             getDialogService().showMessageBox("读取失败"); }
     }
 
+    //读取框
     public void openLoadDialog() {
         if (isGuestMode) { getDialogService().showMessageBox("游客无法读档"); return; }
         List<String> slots = new ArrayList<>();
@@ -584,19 +634,20 @@ public class XiangQiApp extends GameApplication {
         }, MouseButton.PRIMARY);
     }
 
+    //残局模式读取文件
     public void loadEndgameFromFile(File file) {
         try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(file))) {
             ChessBoardModel m = (ChessBoardModel) ois.readObject();
-            m.rebuildAfterLoad(); // 修复 transient 数据
+            m.rebuildAfterLoad();
 
             this.model = m;
             this.loadedGameSnapshot = deepCopy(m);
-            // 设置状态标记
+
             this.isCustomMode = false;
-            this.isLoadedGame = true; // 标记为读档模式，这样 initGame 会直接用这个 model
+            this.isLoadedGame = true; // 标记为读档模式
             this.isSettingUp = false;
             this.isOnlineLaunch = false;
-
+            this.aiLevel = 4;//默认打开AI
             // 进入游戏场景
             getGameController().startNewGame();
 
@@ -606,6 +657,7 @@ public class XiangQiApp extends GameApplication {
         }
     }
 
+    //AI难度显示
     private void updateAIButtonText(PixelatedButton btn) {
         String text = "";
         switch (aiLevel) {
@@ -617,7 +669,7 @@ public class XiangQiApp extends GameApplication {
         }
         btn.setText(text);
 
-        // 可选：根据难度改变文字颜色，增加视觉提示
+        //根据难度改变文字颜色
         if (aiLevel == 0) btn.setTextColor(Color.WHITE);
         else if (aiLevel <= 2) btn.setTextColor(Color.LIGHTGREEN);
         else if (aiLevel == 3) btn.setTextColor(Color.YELLOW);
@@ -633,16 +685,18 @@ public class XiangQiApp extends GameApplication {
         return (lastDot == -1) ? fileName : fileName.substring(0, lastDot);
     }
 
+    //切歌
     public static void switchNextMusic() {
         currentMusicIndex = (currentMusicIndex + 1) % MUSIC_LIST.size();
 
-        //停止当前所有音乐并播放新的
+        //停止当前所有音乐——播放新的
         FXGL.getAudioPlayer().stopAllMusic();
         FXGL.loopBGM(MUSIC_LIST.get(currentMusicIndex));
 
         isMusicStarted = true;
     }
 
+    //判断
     public static void ensureMusicPlaying() {
         if (!isMusicStarted) {
             FXGL.loopBGM(MUSIC_LIST.get(currentMusicIndex));
@@ -650,6 +704,7 @@ public class XiangQiApp extends GameApplication {
         }
     }
 
+    //main
     public static void main(String[] args) {
         new Thread(() -> { try { edu.sustech.xiangqi.server.XiangQiServer.main(null); } catch (Exception e) {} }).start();
         launch(args);

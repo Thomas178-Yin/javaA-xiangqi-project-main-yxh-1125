@@ -46,24 +46,25 @@ public class MainMenuScene extends FXGLMenu {
     private Label statusLabel;
     private boolean isRegistering = false;
 
-    // --- 视觉粒子 ---
+    // 视觉粒子
     private final List<PixelDust> particles = new ArrayList<>();
     private double timeAccumulator = 0;
 
-    // --- 视觉常量 ---
+    //视觉常量
     private static final Color BG_DARK = Color.web("#181010");
     private static final Color BG_LIGHT = Color.web("#2a1e15");
     private static final Color GRID_COLOR = Color.web("#ffffff", 0.03); // 极淡的网格线
     private static final Color TEXT_COLOR = Color.web("#f0e6d2");
     private static final Color ERROR_COLOR = Color.web("#ff5555");
 
-    private VBox endgameView; // 【新增】残局选择界面
-    private GridPane endgameGrid; // 【新增】用于放按钮的网格
+    private VBox endgameView;               // 残局选择界面
+    private GridPane endgameGrid;           // 用于放按钮的网格
     private int currentPage = 0;
     private static final int ITEMS_PER_PAGE = 16;
     private List<File> allEndgameFiles = new ArrayList<>();
-    private Label pageLabel; // 显示 "第 1 / 3 页"
+    private Label pageLabel;                // 显示 "第 1 / 3 页"
 
+    //设置
     private VBox mainMenuBox;   // 主界面
     private VBox settingsBox;   // 设置界面
     private VBox creditsBox;    // 制作人界面
@@ -77,22 +78,24 @@ public class MainMenuScene extends FXGLMenu {
     public MainMenuScene() {
         super(MenuType.MAIN_MENU);
 
+        //音乐
         XiangQiApp.ensureMusicPlaying();
 
+//        初始化
         initSettingsMenu();
         initCreditsMenu();
         initMainMenuView();
-        // 1. 背景：
+        //背景
         Rectangle bg = new Rectangle(getAppWidth(), getAppHeight());
         bg.setFill(new RadialGradient(0, 0, 0.5, 0.5, 1, true, CycleMethod.NO_CYCLE,
                 new Stop(0, BG_LIGHT), new Stop(1, BG_DARK)));
         getContentRoot().getChildren().add(bg);
 
-        // 2. 装饰：绘制像素网格
+        //像素网格
         Canvas gridCanvas = createGridCanvas();
         getContentRoot().getChildren().add(gridCanvas);
 
-        // 3. 标题：
+        //标题
         Text title = new Text("象  棋");
         try { title.setFont(FXGL.getAssetLoader().loadFont("HYPixel11pxU-2.ttf").newFont(110)); } catch (Exception e) {}
         title.setFill(Color.web("#eec39a"));
@@ -107,7 +110,7 @@ public class MainMenuScene extends FXGLMenu {
         VBox titleBox = new VBox(5, title, subTitle);
         titleBox.setAlignment(Pos.CENTER);
 
-        // 4. 内容容器
+        //内容
         contentBox = new VBox(20);
         contentBox.setAlignment(Pos.TOP_CENTER);
 
@@ -126,23 +129,18 @@ public class MainMenuScene extends FXGLMenu {
 //        layout.setTranslateX(getAppWidth() / 2.0 - 150);
 //
 //        getContentRoot().getChildren().add(layout);
-        // 1. 创建一个占满全屏的 StackPane
+        // 占满全屏的 StackPane
         StackPane rootWrapper = new StackPane();
         rootWrapper.setPrefSize(getAppWidth(), getAppHeight());
 
-        // 2. 设置对齐方式为：顶部居中
+        //居中
         rootWrapper.setAlignment(Pos.TOP_CENTER);
 
-        // 3. 把 layout 放进去
         rootWrapper.getChildren().add(layout);
 
-        // 4. 利用 Padding 来控制标题距离顶部的距离 (替代 setTranslateY)
-        // 这里的 120 就是之前的 "setTranslateY(120)"，现在作为内边距
+        // 控制标题距离顶部的距离
         rootWrapper.setPadding(new javafx.geometry.Insets(120, 0, 0, 0));
 
-        // --- 【核心修改结束】 ---
-
-        // 注意：这里添加的是 rootWrapper，不再是 layout
         getContentRoot().getChildren().add(rootWrapper);
 
         // 默认显示
@@ -150,7 +148,7 @@ public class MainMenuScene extends FXGLMenu {
         animateIn(layout);
     }
 
-    // --- 粒子更新 ---
+    //粒子更新
     @Override
     protected void onUpdate(double tpf) {
         super.onUpdate(tpf);
@@ -207,7 +205,7 @@ public class MainMenuScene extends FXGLMenu {
         getContentRoot().getChildren().add(1, view); // 插在背景图和网格之间
     }
 
-    // 简单的内部类管理粒子
+    // 管理粒子
     private static class PixelDust {
         Node view;
         double x, y;
@@ -241,7 +239,7 @@ public class MainMenuScene extends FXGLMenu {
                 field.setStyle(newVal ? INPUT_FOCUS_STYLE : INPUT_STYLE));
     }
 
-    // --- 核心切换逻辑 ---
+    //切换逻辑
 
     private void switchView(VBox targetView) {
         getContentRoot().getChildren().remove(settingsBox);
@@ -267,7 +265,7 @@ public class MainMenuScene extends FXGLMenu {
         pt.play();
     }
 
-    // --- 界面初始化
+    // 初始化登录选择界面
 
     private void initLoginSelectionView() {
         var btnUser = new PixelatedButton("用户登录", "Button1", () -> {
@@ -287,6 +285,7 @@ public class MainMenuScene extends FXGLMenu {
 
     }
 
+    //用户登录
     private void initUserLoginFormView() {
         inputUser = new TextField();
         inputUser.setPromptText("用户名");
@@ -315,9 +314,9 @@ public class MainMenuScene extends FXGLMenu {
         HBox btnBox = new HBox(15);
         btnBox.setAlignment(Pos.CENTER);
 
-        // 这里的按钮文字要短一点，不然两个像素按钮并排可能太宽
+        // 这里的按钮文字要调整
         var btnConfirm = new PixelatedButton("确定", "Button1", this::handleUserLogin);
-        // 手动缩小一点 PixelatedButton 的尺寸 (假设你有缩放逻辑，或者接受默认大小)
+        // 手动缩小一点尺寸!!!!!!!
         btnConfirm.setScaleX(0.9); btnConfirm.setScaleY(0.9);
 
         var btnBack = new PixelatedButton("返回", "Button1", () -> switchView(loginSelectionView));
@@ -329,6 +328,7 @@ public class MainMenuScene extends FXGLMenu {
         userLoginFormView.setAlignment(Pos.CENTER);
     }
 
+    //初始化主功能菜单界面
     private void initMainMenuView() {
         double scale = 0.7;
 
@@ -396,6 +396,7 @@ public class MainMenuScene extends FXGLMenu {
         mainMenuView.setAlignment(Pos.CENTER);
     }
 
+    //初始化残局界面
     private void initEndgameView() {
         if (endgameView != null) {
             refreshEndgameList();
@@ -406,20 +407,17 @@ public class MainMenuScene extends FXGLMenu {
         title.setTextFill(TEXT_COLOR);
         try { title.setFont(FXGL.getAssetLoader().loadFont("HYPixel11pxU-2.ttf").newFont(36)); } catch(Exception e){}
 
-        // --- 【核心修改开始】 ---
         endgameGrid = new GridPane();
         endgameGrid.setAlignment(Pos.CENTER);
         endgameGrid.setHgap(15);
         endgameGrid.setVgap(15);
 
-        // 1. 锁死整个网格的大小 (4列 x 120px + 间隙 ≈ 550px)
-        // 这样无论里面有几个按钮，网格本身永远占据这么大的空间
+        //网格固定
         endgameGrid.setPrefSize(550, 240);
         endgameGrid.setMaxSize(550, 240);
         endgameGrid.setMinSize(550, 240);
 
-        // 2. 锁死列宽 (4列，每列 25%)
-        // 这样即使第一行只有一个按钮，它也会老老实实待在第一个格子里，不会居中跑到中间去
+        //列宽
         for (int i = 0; i < 4; i++) {
             ColumnConstraints col = new ColumnConstraints();
             col.setPercentWidth(25); // 每列占 25% 宽度
@@ -427,15 +425,13 @@ public class MainMenuScene extends FXGLMenu {
             endgameGrid.getColumnConstraints().add(col);
         }
 
-        // 3. 锁死行高 (4行，每行 25%)
+        // 行高
         for (int i = 0; i < 4; i++) {
             RowConstraints row = new RowConstraints();
             row.setPercentHeight(25); // 每行占 25% 高度
             row.setValignment(VPos.CENTER);
             endgameGrid.getRowConstraints().add(row);
         }
-        // --- 【核心修改结束】 ---
-
 
         var btnPrev = new PixelatedButton("上一页", "Button1", this::prevPage);
         btnPrev.setScaleX(0.7); btnPrev.setScaleY(0.7);
@@ -472,7 +468,7 @@ public class MainMenuScene extends FXGLMenu {
 
         allEndgameFiles.clear();
         if (files != null) {
-            // 按文件名排序，保证顺序是 canju01, canju02...
+            // 按文件名排序---canju01, canju02...
             Arrays.sort(files, Comparator.comparing(File::getName));
             allEndgameFiles.addAll(Arrays.asList(files));
         }
@@ -481,6 +477,7 @@ public class MainMenuScene extends FXGLMenu {
         updateGrid();
     }
 
+    //更新关卡按钮
     private void updateGrid() {
         endgameGrid.getChildren().clear(); // 清空内容，但保留上面设置的行列约束
 
@@ -495,8 +492,6 @@ public class MainMenuScene extends FXGLMenu {
         int row = 0;
         int col = 0;
 
-        // 只需要简单的循环，不需要担心填不满的问题
-        // 因为 Grid 已经被 ColumnConstraints 锁死了
         for (int i = start; i < end; i++) {
             File file = allEndgameFiles.get(i);
             String fileName = "第 " + (i + 1) + " 关";
@@ -505,15 +500,10 @@ public class MainMenuScene extends FXGLMenu {
                 XiangQiApp app = (XiangQiApp) FXGL.getApp();
                 app.loadEndgameFromFile(file);
             });
+            btn.setScaleX(0.6);btn.setScaleY(0.6);
 
-            // 按钮内部缩放
-            btn.setScaleX(0.6);
-            btn.setScaleY(0.6);
 
-            // 使用 StackPane 作为一个固定大小的容器放入格子
-            // 这样无论按钮怎么缩放，格子里的占位符大小是不变的
             StackPane cellContainer = new StackPane(btn);
-            // 容器大小要小于 Grid 的格子大小 (550/4 ≈ 137)
             cellContainer.setPrefSize(120, 50);
             cellContainer.setAlignment(Pos.CENTER);
 
@@ -526,7 +516,7 @@ public class MainMenuScene extends FXGLMenu {
             }
         }
 
-        // 如果没有文件，显示提示
+        // 提示
         if (allEndgameFiles.isEmpty()) {
             Label emptyLabel = new Label("暂无残局文件");
             emptyLabel.setTextFill(Color.GRAY);
@@ -549,6 +539,7 @@ public class MainMenuScene extends FXGLMenu {
         }
     }
 
+    //初始化联机大厅界面
     private void initOnlineLobbyView() {
         Label title = new Label("联 机 大 厅");
         title.setTextFill(TEXT_COLOR);
@@ -595,7 +586,7 @@ public class MainMenuScene extends FXGLMenu {
         onlineLobbyView.setAlignment(Pos.CENTER);
     }
 
-    // 逻辑部分保持原样
+    // 登录逻辑
     private void resetLoginForm() {
         inputUser.clear(); inputPass.clear(); inputConfirmPass.clear();
         statusLabel.setText(" "); isRegistering = false;
@@ -641,6 +632,7 @@ public class MainMenuScene extends FXGLMenu {
         delay.play();
     }
 
+    //区分switchView,这里不能用此方法,会冲突
     private void switchMenu(VBox menu) {
         getContentRoot().getChildren().remove(mainMenuBox);
         getContentRoot().getChildren().remove(settingsBox);
@@ -652,6 +644,7 @@ public class MainMenuScene extends FXGLMenu {
 
     }
 
+    //初始化设置菜单
     private void initSettingsMenu() {
         //音量
         Text volTitle = new Text("音 量");

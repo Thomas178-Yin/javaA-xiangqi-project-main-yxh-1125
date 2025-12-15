@@ -19,9 +19,12 @@ import java.util.Stack;
 
 public class HistoryPanel extends VBox {
 
+    //走法记录的列表
     private ListView<MoveCommand> listView;
 
+    //初始化历史记录面板
     public HistoryPanel(double width, double height) {
+        //基础设置
         setPrefSize(width, height);
         setStyle("-fx-background-color: rgba(0, 0, 0, 0.8); -fx-background-radius: 10;");
         setPadding(new Insets(10));
@@ -43,7 +46,7 @@ public class HistoryPanel extends VBox {
         // 设置列表样式 (透明背景)
         listView.setStyle("-fx-control-inner-background: transparent; -fx-background-color: transparent;");
 
-        // 【关键】自定义单元格渲染：根据红黑方设置颜色
+        //红黑方设置颜色
         listView.setCellFactory(lv -> new ListCell<MoveCommand>() {
             @Override
             protected void updateItem(MoveCommand item, boolean empty) {
@@ -53,10 +56,10 @@ public class HistoryPanel extends VBox {
                     setGraphic(null);
                     setStyle("-fx-background-color: transparent;");
                 } else {
-                    // 获取中文术语
+                    // 获取中文描述
                     String notation = ChessNotationUtils.getNotation(item);
 
-                    // 创建文本对象
+                    // 创建文本
                     Text textNode = new Text(notation);
                     try {
                         textNode.setFont(FXGL.getAssetLoader().loadFont("HYPixel11pxU-2.ttf").newFont(18));
@@ -71,13 +74,14 @@ public class HistoryPanel extends VBox {
                         textNode.setFill(Color.web("#AAAAAA")); // 黑方淡灰 (纯黑在深色背景看不清)
                     }
 
+                    //文本设置为图形内容
                     setGraphic(textNode);
                     setStyle("-fx-background-color: transparent;");
                 }
             }
         });
 
-        // 关闭按钮
+        // 关闭
         PixelatedButton btnClose = new PixelatedButton("关闭", "Button1", () -> this.setVisible(false));
         btnClose.setScaleX(0.8);
         btnClose.setScaleY(0.8);
@@ -85,11 +89,10 @@ public class HistoryPanel extends VBox {
         getChildren().addAll(title, listView, btnClose);
     }
 
-    /**
-     * 更新列表数据
-     * @param history 传入 Model 中的 moveHistory 栈
-     */
+    //更新列表数据。
+    //当游戏中有新落子或悔棋发生时调用此方法，刷新界面显示。
     public void updateHistory(Stack<MoveCommand> history) {
+        //清空/添加
         listView.getItems().clear();
         listView.getItems().addAll(history);
         // 自动滚动到底部

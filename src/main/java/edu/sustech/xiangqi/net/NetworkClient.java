@@ -33,26 +33,24 @@ public class NetworkClient {
      * @throws IOException 连接失败时抛出，由 UI 层捕获并提示
      */
     public void connect(String ip, int port, String roomId) throws IOException {
-        // 1. 建立 Socket 连接
+        //建立 Socket 连接
         this.socket = new Socket(ip, port);
 
-        // 2. 初始化输入输出流 (autoFlush = true 非常重要)
+        //初始化输入输出流
         this.out = new PrintWriter(socket.getOutputStream(), true);
         this.in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 
         this.isRunning = true;
 
-        // 3. 【关键协议】连接建立后的第一件事：发送加入房间指令
-        // 服务器端会读取这一行来决定把你分配到哪一桌
+        //连接建立后的第一件事：发送加入房间指令
+        //服务器端会读取这一行来决定把你分配到哪一桌
         out.println("JOIN " + roomId);
 
-        // 4. 开启后台线程，专门负责“听”服务器说话
+        //开启后台线程
         new Thread(this::listen).start();
     }
 
-    /**
-     * 监听循环 (运行在后台线程)
-     */
+//监听
     private void listen() {
         try {
             String msg;
@@ -70,28 +68,21 @@ public class NetworkClient {
         }
     }
 
-    /**
-     * 发送移动指令
-     * 协议格式: "MOVE r1 c1 r2 c2"
-     */
+//按协议发送指令
     public void sendMove(int r1, int c1, int r2, int c2) {
         if (out != null) {
             out.println("MOVE " + r1 + " " + c1 + " " + r2 + " " + c2);
         }
     }
 
-    /**
-     * 发送任意指令 (例如 "SURRENDER", "UNDO_REQUEST")
-     */
+//发送信息
     public void sendRaw(String msg) {
         if (out != null) {
             out.println(msg);
         }
     }
 
-    /**
-     * 断开连接并释放资源
-     */
+    //断联后释放
     public void close() {
         isRunning = false;
         try {

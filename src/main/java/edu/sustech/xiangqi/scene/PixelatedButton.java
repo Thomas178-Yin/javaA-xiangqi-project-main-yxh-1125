@@ -7,11 +7,8 @@ import javafx.scene.text.Text;
 import javafx.scene.image.ImageView;
 import javafx.scene.image.Image;
 import com.almasb.fxgl.audio.Sound;
-/**
- * 修改说明：
- * 1. 继承 StackPane 而不是 Pane，这样可以直接实现内容自动居中。
- * 2. 强制设置最大/最小宽高，锁定为图片尺寸，防止点击时因为图片切换导致布局跳动。
- */
+
+
 public class PixelatedButton extends StackPane {
 
     private ImageView background;
@@ -23,13 +20,11 @@ public class PixelatedButton extends StackPane {
         this.action = action;
 
         // 1. 预加载图片
-        // 确保 "Press.png" 存在于你的 assets/textures 文件夹中，如果没有，请改回 "Button1"
         Image normalImage = FXGL.getAssetLoader().loadTexture(imageName + ".png").getImage();
         Image pressImage = null;
         try {
             pressImage = FXGL.getAssetLoader().loadTexture("Press.png").getImage();
         } catch (Exception e) {
-            // 如果没有按下效果图，就用原图，防止报错
             pressImage = normalImage;
         }
 
@@ -37,28 +32,26 @@ public class PixelatedButton extends StackPane {
                 clickSound = FXGL.getAssetLoader().loadSound("按钮音效1.mp3");
         }
 
-        // 2. 初始化背景图
+        //初始化背景
         background = new ImageView(normalImage);
         background.setPreserveRatio(true);
 
-        // 3. 初始化文字
+        //初始化文字
         text = new Text(label);
-        // 稍微调整字号，太大可能会撑出去
+        //调整字号
         text.setFont(FXGL.getAssetLoader().loadFont("HYPixel11pxU-2.ttf").newFont(30));
         text.setFill(Color.WHITE);
+
         // 禁用文字的鼠标事件，确保点击都能点在按钮上
         text.setMouseTransparent(true);
 
-        // 4. 添加到 StackPane (自动居中)
         getChildren().addAll(background, text);
 
-        // 5. 【关键】锁定按钮尺寸
-        // 这一步防止了点击时的“画面抖动”和 VBox 布局错乱
-        // 使用图片的原始尺寸作为按钮的固定尺寸
+        // 锁定尺寸
         double width = normalImage.getWidth();
         double height = normalImage.getHeight();
 
-        // 如果图片太小或没加载到，给一个默认值防止看不见
+        //以防万一
         if (width == 0) width = 190;
         if (height == 0) height = 49;
 
@@ -68,7 +61,7 @@ public class PixelatedButton extends StackPane {
         setMaxHeight(height);
         setPrefSize(width, height);
 
-        // 6. 交互事件
+        //交互事件
         Image finalPressImage = pressImage;
 
 //        setOnMouseEntered(e -> FXGL.play("按钮音效1.mp3")); // 鼠标悬停音效
@@ -102,8 +95,12 @@ public class PixelatedButton extends StackPane {
     public void setTextColor(Color color) {
         this.text.setFill(color);
     }
-
+    //Y
     public void setTextY(double y) {
         this.text.setTranslateY(y);
+    }
+    //X
+    public void setTextX(double x) {
+        this.text.setTranslateX(x);
     }
 }

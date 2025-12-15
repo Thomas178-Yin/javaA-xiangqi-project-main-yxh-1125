@@ -13,14 +13,14 @@ public class TurnIndicator extends StackPane {
     private Text text;
 
     public TurnIndicator() {
-        // 1. 加载背景图片
+        //加载背景图片
         var bg = new ImageView(FXGL.getAssetLoader().loadTexture("Button1.png").getImage());
 
-        // 2. 创建文本节点
+        //文本
         text = new Text();
         text.setFont(FXGL.getAssetLoader().loadFont("HYPixel11pxU-2.ttf").newFont(28));
 
-        // 3. 使用 StackPane 自动将文本居中在背景图之上
+        //文本居中
         setAlignment(Pos.CENTER);
         getChildren().addAll(bg, text);
     }

@@ -29,7 +29,7 @@ public class OnlineLobbyScene extends FXGLMenu {
         title.setFont(FXGL.getAssetLoader().loadFont("HYPixel11pxU-2.ttf").newFont(60));
         title.setFill(Color.WHITE);
 
-        // IP 输入 (默认填本机，方便测试)
+        // IP 输入
         Label lblIp = new Label("服务器 IP:");
         lblIp.setStyle("-fx-text-fill: white; -fx-font-size: 18px;");
         ipField = new TextField("127.0.0.1");

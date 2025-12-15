@@ -3,11 +3,7 @@ package edu.sustech.xiangqi.util;
 import edu.sustech.xiangqi.model.AbstractPiece;
 import edu.sustech.xiangqi.model.MoveCommand;
 
-/**
- * [类作用]: 将移动指令转换为中国象棋传统棋谱术语。
- * [输入]: MoveCommand
- * [输出]: String (例如 "炮二平五")
- */
+//术语转换
 public class ChessNotationUtils {
 
     private static final String[] NUM_RED = {"", "一", "二", "三", "四", "五", "六", "七", "八", "九"};
@@ -17,42 +13,39 @@ public class ChessNotationUtils {
         AbstractPiece piece = cmd.getMovedPiece();
         boolean isRed = piece.isRed();
         int startCol = piece.getCol();
-        int startRow = piece.getRow(); // 注意：这是移动后的位置，Command里存的是startRow吗？
-        // 修正：MoveCommand构造时存的是startRow/Col
+        int startRow = piece.getRow();
         int endCol = cmd.getEndCol();
         int endRow = cmd.getEndRow();
 
-        // 1. 获取棋子名称
+        //棋子名字
         String name = piece.getName();
 
-        // 2. 计算起始列号 (红方从右向左 1-9，黑方也是从他的右向左 1-9)
-        // 棋盘 col 0 在左边。
+        // 2. 计算起始列号
         // 红方视角：Col 0 是 "九"，Col 8 是 "一"
         // 黑方视角：Col 0 是 "1"，Col 8 是 "9"
         int srcColNum = isRed ? (9 - startCol) : (startCol + 1);
 
-        // 3. 计算方向 (进、退、平)
+        // 3. 计算方向
         String dir = "";
-        // 纵向位移绝对值
         int dist = Math.abs(endRow - startRow);
 
         if (startRow == endRow) {
             dir = "平";
         } else {
-            // 红方 row 9 -> 0, 变小是进
-            // 黑方 row 0 -> 9, 变大是进
+            // 红方变小是进
+            // 黑方变大是进
             boolean isAdvance = isRed ? (endRow < startRow) : (endRow > startRow);
             dir = isAdvance ? "进" : "退";
         }
 
-        // 4. 计算落点/距离
+        //计算落点
         String target = "";
 
         // 直线走子 (车、炮、兵、将)：进退按步数，平按列号
         boolean isLinear = isLinearPiece(name);
 
         if (dir.equals("平")) {
-            // 平：也是去往哪一列
+            // 平
             int destColNum = isRed ? (9 - endCol) : (endCol + 1);
             target = getNumStr(destColNum, isRed);
         } else {
@@ -67,7 +60,7 @@ public class ChessNotationUtils {
             }
         }
 
-        // 5. 组合字符串
+        //组合
         return name + getNumStr(srcColNum, isRed) + dir + target;
     }
 

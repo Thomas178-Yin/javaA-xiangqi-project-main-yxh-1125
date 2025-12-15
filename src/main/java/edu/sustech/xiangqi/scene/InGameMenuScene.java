@@ -24,11 +24,11 @@ public class InGameMenuScene extends FXGLMenu {
         super(MenuType.GAME_MENU);
 
 
-        // 1. 创建背景遮罩 (半透明黑色)
+        // 1. 创建背景遮罩
         Rectangle shadow = new Rectangle(XiangQiApp.APP_WIDTH, XiangQiApp.APP_HEIGHT, Color.color(0, 0, 0, 0.7));
         getContentRoot().getChildren().add(shadow);
 
-        // 2. 初始化各个子菜单面板
+        // 2. 初始化子菜单面板
         initMainMenu();
         initSettingsMenu();
         initCreditsMenu();
@@ -80,6 +80,7 @@ public class InGameMenuScene extends FXGLMenu {
                 Bindings.format("%.0f%%", FXGL.getSettings().globalSoundVolumeProperty().multiply(100))
         );
 
+        //down
         var btnVolDown = new PixelatedButton("-", "Button1", () -> {
             double v = FXGL.getSettings().getGlobalSoundVolume();
             FXGL.getSettings().setGlobalSoundVolume(Math.max(v - 0.1, 0));
@@ -91,6 +92,7 @@ public class InGameMenuScene extends FXGLMenu {
         btnVolDown.setFontSize(80);
         btnVolDown.setTextY(-20);
 
+        //up
         var btnVolUp = new PixelatedButton("+", "Button1", () -> {
             double v = FXGL.getSettings().getGlobalSoundVolume();
             FXGL.getSettings().setGlobalSoundVolume(Math.min(v + 0.1, 1));
@@ -102,6 +104,7 @@ public class InGameMenuScene extends FXGLMenu {
         btnVolUp.setFontSize(140);
         btnVolUp.setTextY(-20);
 
+        //音量块
         VBox volBox = new VBox(5, volTitle, new javafx.scene.layout.HBox(10, btnVolDown, volValue, btnVolUp));
         ((javafx.scene.layout.HBox)volBox.getChildren().get(1)).setAlignment(Pos.CENTER);
         volBox.setAlignment(Pos.CENTER);

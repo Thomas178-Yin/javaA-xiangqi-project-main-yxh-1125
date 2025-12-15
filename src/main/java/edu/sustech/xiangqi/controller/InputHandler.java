@@ -21,13 +21,13 @@ public class InputHandler {
         double clickX = screenPosition.getX();
         double clickY = screenPosition.getY();
 
-        // 【修改】边界检查：Y轴也要检查是否在棋盘范围内
+        // 边界检查：Y轴也要检查是否在棋盘范围内
         if (clickX < BOARD_START_X || clickX > BOARD_START_X + BOARD_WIDTH ||
                 clickY < BOARD_START_Y || clickY > BOARD_START_Y + BOARD_HEIGHT) { // 使用 BOARD_START_Y
             return;
         }
 
-        // 【修改】计算偏移量：Y轴减去 BOARD_START_Y
+        // 计算偏移量：Y轴减去 BOARD_START_Y
         double xInGrid = clickX - (BOARD_START_X + MARGIN);
         double yInGrid = clickY - (BOARD_START_Y + MARGIN); // 使用 BOARD_START_Y
 
