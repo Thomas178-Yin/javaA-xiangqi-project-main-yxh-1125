@@ -330,7 +330,7 @@ public class MainMenuScene extends FXGLMenu {
 
     //初始化主功能菜单界面
     private void initMainMenuView() {
-        double scale = 0.7;
+        double scale = 0.6;
 
         var btnNew = new PixelatedButton("标准对战", "Button1", () -> {
             XiangQiApp app = (XiangQiApp) FXGL.getApp();
@@ -365,6 +365,12 @@ public class MainMenuScene extends FXGLMenu {
         });
         btnChallenge.setScaleX(scale); btnChallenge.setScaleY(scale);
 
+        var btnReplay = new PixelatedButton("精彩回放", "Button1", () -> {
+            XiangQiApp app = (XiangQiApp) FXGL.getApp();
+            showReplayFileSelector();
+        });
+        btnReplay.setScaleX(scale); btnReplay.setScaleY(scale);
+
         var btnLoad = new PixelatedButton("读取存档", "Button1", () -> {
             XiangQiApp app = (XiangQiApp) FXGL.getApp();
             app.setOnlineLaunch(false);
@@ -392,7 +398,7 @@ public class MainMenuScene extends FXGLMenu {
         });
         btnLogout.setScaleX(scale); btnLogout.setScaleY(scale);
 
-        mainMenuView = new VBox(-40, btnNew, btnCustom, btnChallenge, btnLoad, btnNet, btnSettings, btnLogout);
+        mainMenuView = new VBox(-50, btnNew, btnCustom, btnEndgame, btnChallenge, btnLoad, btnReplay, btnNet, btnSettings, btnLogout);
         mainMenuView.setAlignment(Pos.CENTER);
     }
 
@@ -719,6 +725,39 @@ public class MainMenuScene extends FXGLMenu {
 
         settingsBox = new VBox(-20, volBox, btnMusic, btnFullscreen, btnCredits, btnBack);
         settingsBox.setAlignment(Pos.CENTER);
+    }
+
+    //回放
+    private void showReplayFileSelector() {
+        XiangQiApp app = (XiangQiApp) FXGL.getApp();
+        String currentUser = app.getCurrentUser();
+        String saveDir = "saves/";
+
+        List<String> options = new ArrayList<>();
+        // 扫描存档
+        if (new File(saveDir + currentUser + "/" + "autosave.dat").exists()) options.add("自动存档 (最近一局)");
+        for (int i=1; i<=3; i++) {
+            if (new File(saveDir + currentUser + "/" + "save_" + i + ".dat").exists()) {
+                options.add("存档 " + i);
+            }
+        }
+
+        if (options.isEmpty()) {
+            FXGL.getDialogService().showMessageBox("没有可回放的存档。");
+            return;
+        }
+
+        FXGL.getDialogService().showChoiceBox("选择要回放的对局", options, selected -> {
+            String filename;
+            if (selected.contains("自动")) {
+                filename = saveDir + currentUser + "/" + "autosave.dat";
+            } else {
+                // 解析 "存档 1" -> 1
+                String num = selected.split(" ")[1];
+                filename = saveDir + currentUser + "/" +"save_" + num + ".dat";
+            }
+            app.loadReplayFromFile(new File(filename));
+        });
     }
 
     //制作人

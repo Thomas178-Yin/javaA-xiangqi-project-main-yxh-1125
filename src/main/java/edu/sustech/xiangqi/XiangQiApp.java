@@ -117,6 +117,10 @@ public class XiangQiApp extends GameApplication {
     private static int currentMusicIndex = 0;
     private static boolean isMusicStarted = false;
 
+    //回放
+    private boolean isReplayMode = false;
+    private List<MoveCommand> replayMoves = new ArrayList<>();
+
     // --- Getters & Setters ---
     public void setOnlineLaunch(boolean isOnline) { this.isOnlineLaunch = isOnline; }
     public boolean isOnlineLaunch() { return isOnlineLaunch; }
@@ -141,7 +145,7 @@ public class XiangQiApp extends GameApplication {
         return aiLevel;
     }
     public boolean isCustomMode() { return isCustomMode; }
-
+    public boolean isReplayMode() { return isReplayMode; }
     // 登录
     public void login(String username) { this.currentUser = username; this.isGuestMode = false; }
     public void loginAsGuest() { this.currentUser = "Guest"; this.isGuestMode = true; }
@@ -214,8 +218,29 @@ public class XiangQiApp extends GameApplication {
             isBoardFlipped = false;
         }
 
+        if (isReplayMode) {
+            this.model = new ChessBoardModel();
+            isCustomMode = false;
+            isLoadedGame = false;
+            isSettingUp = false;
+            this.aiLevel = 0; // 关闭 AI
 
-        if (isLoadedGame) {
+            spawn("background", 0, 0);
+            spawn("board", BOARD_START_X, BOARD_START_Y);
+
+            this.boardController = new boardController(this.model);
+            this.inputHandler = new InputHandler(this.boardController);
+            spawnPiecesFromModel();
+
+            //启动回放逻辑
+            runOnce(() -> {
+                getDialogService().showMessageBox("开始回放存档，点击确定开始。", () -> {
+                    boardController.startReplay(replayMoves);
+                });
+            }, Duration.seconds(0.5));
+
+        }
+        else if (isLoadedGame) {
             // 第一次加载
             isLoadedGame = false;
             if (this.model == null) this.model = new ChessBoardModel();
@@ -267,7 +292,33 @@ public class XiangQiApp extends GameApplication {
 
     }
 
+    // 读取存档并进入回放模式的方法
+    public void loadReplayFromFile(File file) {
+        try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(file))) {
+            // 1. 读取存档里的 Model
+            ChessBoardModel savedModel = (ChessBoardModel) ois.readObject();
 
+            // 2. 提取历史记录
+            this.replayMoves = new ArrayList<>(savedModel.getMoveHistoryStack());
+
+            if (this.replayMoves.isEmpty()) {
+                getDialogService().showMessageBox("该存档没有走棋记录，无法回放。");
+                return;
+            }
+
+            // 3. 设置状态并开始
+            this.isReplayMode = true;
+            this.isCustomMode = false;
+            this.isLoadedGame = false;
+            this.isOnlineLaunch = false;
+
+            getGameController().startNewGame();
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            getDialogService().showMessageBox("读取回放失败: " + file.getName());
+        }
+    }
     //生成棋子根据model——棋局变动
     public void spawnPiecesFromModel() {
         //移除

@@ -701,6 +701,42 @@ public class boardController {
         }
     }
 
+    // 【新增】回放执行逻辑
+    public void startReplay(List<MoveCommand> moves) {
+        // 锁定用户输入，防止回放时玩家乱点
+        getApp().getInputHandler().setLocked(true);
+
+        // 开始递归执行每一半步
+        executeNextReplayMove(moves, 0);
+    }
+
+    private void executeNextReplayMove(List<MoveCommand> moves, int index) {
+        if (index >= moves.size()) {
+            getDialogService().showMessageBox("回放结束。");
+            getApp().getInputHandler().setLocked(false); // 解锁（或者保持锁定让用户退出）
+            return;
+        }
+
+        MoveCommand cmd = moves.get(index);
+
+        // 解析坐标 (注意：MoveCommand 里存的是当时那个棋子对象，但在新的一局里，我们要通过坐标找新棋子)
+        int r1 = cmd.getStartRow();
+        int c1 = cmd.getStartCol();
+        int r2 = cmd.getEndRow();
+        int c2 = cmd.getEndCol();
+
+        // 在当前的 model 里找到对应位置的棋子
+        AbstractPiece pieceToMove = model.getPieceAt(r1, c1);
+
+        if (pieceToMove != null) {
+            executeMove(pieceToMove, r2, c2, false);
+        } else {
+            System.out.println("回放异常：在 " + r1 + "," + c1 + " 找不到棋子");
+        }
+
+        runOnce(() -> executeNextReplayMove(moves, index + 1), Duration.seconds(1.5));
+    }
+
     //创建棋子对象
     private AbstractPiece createPiece(String type, int r, int c, boolean red) {
         switch (type) {
