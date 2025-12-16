@@ -758,4 +758,8 @@ public class XiangQiApp extends GameApplication {
         new Thread(() -> { try { edu.sustech.xiangqi.server.XiangQiServer.main(null); } catch (Exception e) {} }).start();
         launch(args);
     }
+
+    public void setReplayMode(boolean isReplayMode) {
+        this.isReplayMode = isReplayMode;
+    }
 }

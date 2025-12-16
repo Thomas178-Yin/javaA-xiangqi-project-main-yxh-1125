@@ -338,6 +338,7 @@ public class MainMenuScene extends FXGLMenu {
             app.setLoadedGame(false);
             app.setOnlineLaunch(false);
             app.loadedGameSnapshot = null;
+            app.setReplayMode(false);
             fireNewGame();
         });
         btnNew.setScaleX(scale); btnNew.setScaleY(scale);
@@ -348,18 +349,21 @@ public class MainMenuScene extends FXGLMenu {
             app.setLoadedGame(false);
             app.setOnlineLaunch(false);
             app.loadedGameSnapshot = null;
+            app.setReplayMode(false);
             fireNewGame();
         });
         btnCustom.setScaleX(scale); btnCustom.setScaleY(scale);
 
-        //////////////////////////////
-        var btnEndgame = new PixelatedButton("残局定式", "Button1", () -> {
-            refreshEndgameList(); // 每次点击都刷新一下文件列表
-            switchView(endgameView);
-        });
-        btnEndgame.setScaleX(scale); btnEndgame.setScaleY(scale);
+//        //////////////////////////////
+//        var btnEndgame = new PixelatedButton("残局定式", "Button1", () -> {
+//            refreshEndgameList(); // 每次点击都刷新一下文件列表
+//            switchView(endgameView);
+//        });
+//        btnEndgame.setScaleX(scale); btnEndgame.setScaleY(scale);
 
         var btnChallenge = new PixelatedButton("残局定式", "Button1", () -> {
+            XiangQiApp app = (XiangQiApp) FXGL.getApp();
+            app.setReplayMode(false);
             initEndgameView(); // 初始化或刷新
             switchView(endgameView);
         });
@@ -368,18 +372,22 @@ public class MainMenuScene extends FXGLMenu {
         var btnReplay = new PixelatedButton("精彩回放", "Button1", () -> {
             XiangQiApp app = (XiangQiApp) FXGL.getApp();
             showReplayFileSelector();
+
         });
         btnReplay.setScaleX(scale); btnReplay.setScaleY(scale);
 
         var btnLoad = new PixelatedButton("读取存档", "Button1", () -> {
             XiangQiApp app = (XiangQiApp) FXGL.getApp();
             app.setOnlineLaunch(false);
+            app.setReplayMode(false);
             app.openLoadDialog();
         });
         btnLoad.setScaleX(scale); btnLoad.setScaleY(scale);
 
         var btnNet = new PixelatedButton("联网对战", "Button1", () -> {
             XiangQiApp app = (XiangQiApp) FXGL.getApp();
+            app.setReplayMode(false);
+
             if (app.isGuest()) {
                 FXGL.getDialogService().showMessageBox("游客模式无法进行联网对战。");
                 return;
@@ -398,8 +406,11 @@ public class MainMenuScene extends FXGLMenu {
         });
         btnLogout.setScaleX(scale); btnLogout.setScaleY(scale);
 
-        mainMenuView = new VBox(-50, btnNew, btnCustom, btnEndgame, btnChallenge, btnLoad, btnReplay, btnNet, btnSettings, btnLogout);
+        mainMenuView = new VBox(-50, btnNew, btnCustom,
+//                btnEndgame,
+                btnChallenge, btnLoad, btnReplay, btnNet, btnSettings, btnLogout);
         mainMenuView.setAlignment(Pos.CENTER);
+
     }
 
     //初始化残局界面
