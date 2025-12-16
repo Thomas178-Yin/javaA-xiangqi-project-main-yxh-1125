@@ -198,7 +198,7 @@ public class ChessBoardModel implements Serializable{
            // 2. 【新增】检查是否困毙 (Stalemate)
            else if (!hasAnyLegalMove(isRedTurn)) {
                this.isGameOver = true;
-               this.winner = !isRedTurn ? "黑方" : "红方";
+               this.winner = isRedTurn ? "黑方" : "红方";
 //               System.out.println("困毙！胜利者: " + this.winner);
            }
            // 3. 将军提示
